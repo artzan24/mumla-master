@@ -29,7 +29,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -65,7 +65,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
 
     private ViewPager mViewPager;
     private PagerTabStrip mTabStrip;
-    private Button mTalkButton;
+    private ImageButton mTalkButton;
     private View mTalkView;
 
     private View mTargetPanel;
@@ -79,12 +79,17 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     /** True iff the talk button has been hidden (e.g. when muted) */
     private boolean mTalkButtonHidden;
 
+    private View mActiveSpeakerPanel;
+    private TextView mActiveSpeakerText;
+    private boolean mIsChannelBusy = false;
+
     private HumlaObserver mObserver = new HumlaObserver() {
         @Override
         public void onUserTalkStateUpdated(IUser user) {
             if (getService() == null || !getService().isConnected()) {
                 return;
             }
+
             int selfSession;
             try {
                 selfSession = getService().HumlaSession().getSessionId();
@@ -92,18 +97,56 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                 Log.d(TAG, "exception in onUserTalkStateUpdated: " + e);
                 return;
             }
-            if (user != null && user.getSession() == selfSession) {
-                // Manually set button selection colour when we receive a talk state update.
-                // This allows representation of talk state when using hot corners and PTT toggle.
-                switch (user.getTalkState()) {
-                case TALKING:
-                case SHOUTING:
-                case WHISPERING:
-                    mTalkButton.setPressed(true);
-                    break;
-                case PASSIVE:
-                    mTalkButton.setPressed(false);
-                    break;
+
+            if (user != null) {
+                // 1. Logika untuk tombol PTT jika diri sendiri yang bicara
+                if (user.getSession() == selfSession) {
+                    switch (user.getTalkState()) {
+                        case TALKING:
+                        case SHOUTING:
+                        case WHISPERING:
+                            mTalkButton.setPressed(true);
+                            // Mengubah background & border tombol secara langsung menjadi HIJAU saat aktif/bicara
+                            mTalkButton.setBackgroundResource(R.drawable.ptt_button_active_bg);
+                            break;
+                        case PASSIVE:
+                            mTalkButton.setPressed(false);
+                            // Mengembalikan background & border tombol ke warna normal (Oranye)
+                            mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
+                            break;
+                    }
+                }
+
+                // 2. Logika untuk Opsi 3: Menampilkan info user lain / siapa pun yang sedang bicara
+                if (mActiveSpeakerPanel != null && mActiveSpeakerText != null) {
+                    switch (user.getTalkState()) {
+                        case TALKING:
+                        case SHOUTING:
+                        case WHISPERING:
+                            mIsChannelBusy = true;
+                            Log.d(TAG, "DEBUG_PTT: User lain (" + user.getName() + ") sedang bicara. mIsChannelBusy = " + mIsChannelBusy);
+                            final String infoText = user.getName() + " sedang berbicara...";
+
+                            getActivity().runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    mActiveSpeakerText.setText(infoText);
+                                    mActiveSpeakerPanel.setVisibility(View.VISIBLE);
+                                }
+                            });
+                            break;
+
+                        case PASSIVE:
+                            mIsChannelBusy = false;
+                            Log.d(TAG, "DEBUG_PTT: User lain selesai bicara. mIsChannelBusy = " + mIsChannelBusy);
+                            getActivity().runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    mActiveSpeakerPanel.setVisibility(View.GONE);
+                                }
+                            });
+                            break;
+                    }
                 }
             }
         }
@@ -137,37 +180,70 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         setHasOptionsMenu(true);
     }
 
+    private boolean isChannelBusy() {
+        if (getService() == null || !getService().isConnected()) {
+            return false;
+        }
+
+        try {
+            int selfSession = getService().HumlaSession().getSessionId();
+            java.util.List<? extends IUser> users = getService().HumlaSession().getSessionChannel().getUsers();
+            if (users != null) {
+                for (IUser user : users) {
+                    if (user != null && user.getSession() != selfSession) {
+                        switch (user.getTalkState()) {
+                            case TALKING:
+                            case SHOUTING:
+                            case WHISPERING:
+                                return true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "exception in isChannelBusy: " + e);
+        }
+        return false;
+    }
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_channel, container, false);
-        mViewPager = (ViewPager) view.findViewById(R.id.channel_view_pager);
-        mTabStrip = (PagerTabStrip) view.findViewById(R.id.channel_tab_strip);
-        if(mTabStrip != null) {
-            int[] attrs = new int[] { android.R.attr.colorPrimary, android.R.attr.textColorPrimaryInverse };
-            TypedArray a = getActivity().obtainStyledAttributes(attrs);
-            int titleStripBackground = a.getColor(0, -1);
-            int titleStripColor = a.getColor(1, -1);
-            a.recycle();
+        mActiveSpeakerPanel = view.findViewById(R.id.active_speaker_panel);
+        mActiveSpeakerText = (TextView) view.findViewById(R.id.active_speaker_text);
 
-            mTabStrip.setTextColor(titleStripColor);
-            mTabStrip.setTabIndicatorColor(titleStripColor);
-            mTabStrip.setBackgroundColor(titleStripBackground);
-            mTabStrip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        }
+        mViewPager = (ViewPager) view.findViewById(R.id.channel_view_pager);
 
         mTalkView = view.findViewById(R.id.pushtotalk_view);
-        mTalkButton = (Button) view.findViewById(R.id.pushtotalk);
-        mTalkButton.setOnTouchListener(new View.OnTouchListener() {
+        mTalkButton = (ImageButton) view.findViewById(R.id.pushtotalk);
 
+        mTalkButton.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
+                        // Jika channel sibuk, blokir penekanan awal
+                        if (mIsChannelBusy) {
+                            showChannelBusyToast();
+                            mTalkButton.setPressed(false);
+                            v.setPressed(false);
+                            return true;
+                        }
+
                         if (getService() != null) {
                             getService().onTalkKeyDown();
                         }
+                        mTalkButton.setPressed(true);
                         break;
+
                     case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        // SELALU reset visual tombol agar kembali normal (release)
+                        mTalkButton.setPressed(false);
+                        v.setPressed(false);
+                        mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
+
+                        // SELALU kirim sinyal release ke service tanpa terhalang mIsChannelBusy
                         if (getService() != null) {
                             getService().onTalkKeyUp();
                         }
@@ -176,6 +252,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                 return true;
             }
         });
+
         mTargetPanel = view.findViewById(R.id.target_panel);
         mTargetPanelCancel = (ImageView) view.findViewById(R.id.target_panel_cancel);
         mTargetPanelCancel.setOnClickListener(new View.OnClickListener() {
@@ -195,6 +272,21 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         mTargetPanelText = (TextView) view.findViewById(R.id.target_panel_warning);
         configureInput();
         return view;
+    }
+
+    private void showChannelBusyToast() {
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        android.widget.Toast.makeText(getActivity(), "Channel Sibuk", android.widget.Toast.LENGTH_SHORT).show();
+                    } catch (Exception e) {
+                        Log.d(TAG, "Toast error: " + e);
+                    }
+                }
+            });
+        }
     }
 
     @Override
@@ -247,10 +339,12 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     @Override
     public void onPause() {
         super.onPause();
+        if (mTalkButton != null) {
+            mTalkButton.setPressed(false);
+            mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
+        }
         if (getService() != null && getService().isConnected() &&
-            !Settings.getInstance(getActivity()).isPushToTalkToggle()) {
-            // XXX: This ensures that push to talk is disabled when we pause.
-            // We don't want to leave the talk state active if the fragment is paused while pressed.
+                !Settings.getInstance(getActivity()).isPushToTalkToggle()) {
             getService().HumlaSession().setTalkingState(false);
         }
     }
@@ -292,23 +386,13 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         }
     }
 
-    /**
-     * @return true if the channel fragment is set to display only the user's pinned channels.
-     */
     private boolean isShowingPinnedChannels() {
         return getArguments() != null &&
-               getArguments().getBoolean("pinned");
+                getArguments().getBoolean("pinned");
     }
 
-    /**
-     * Configures the fragment in accordance with the user's interface preferences.
-     */
     private void configureInput() {
         Settings settings = Settings.getInstance(getActivity());
-
-        ViewGroup.LayoutParams params = mTalkView.getLayoutParams();
-        params.height = settings.getPTTButtonHeight();
-        mTalkButton.setLayoutParams(params);
 
         boolean muted = false;
         if (getService() != null && getService().isConnected()) {
@@ -322,8 +406,8 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         }
         boolean showPttButton =
                 !muted &&
-                settings.isPushToTalkButtonShown() &&
-                settings.getInputMethod().equals(Settings.ARRAY_INPUT_METHOD_PTT);
+                        settings.isPushToTalkButtonShown() &&
+                        settings.getInputMethod().equals(Settings.ARRAY_INPUT_METHOD_PTT);
         setTalkButtonHidden(!showPttButton);
     }
 
@@ -335,8 +419,8 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         if(Settings.PREF_INPUT_METHOD.equals(key)
-            || Settings.PREF_PUSH_BUTTON_HIDE_KEY.equals(key)
-            || Settings.PREF_PTT_BUTTON_HEIGHT.equals(key))
+                || Settings.PREF_PUSH_BUTTON_HIDE_KEY.equals(key)
+                || Settings.PREF_PTT_BUTTON_HEIGHT.equals(key))
             configureInput();
     }
 

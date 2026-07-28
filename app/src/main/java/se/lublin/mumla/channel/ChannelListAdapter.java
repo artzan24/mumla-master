@@ -208,6 +208,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 }
             }
             cvh.mJoinButton.setActivated(isJoined);
+            // Mengaktifkan state pada baris channel agar background selector otomatis berubah
+            cvh.itemView.setActivated(isJoined);
 
             // Ratakan margin agar semua channel sejajar rapi ke kiri
             DisplayMetrics metrics = mContext.getResources().getDisplayMetrics();

@@ -135,6 +135,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     private AlertDialog mConnectingDialog;
     private AlertDialog mErrorDialog;
+    private boolean mIsPttBlocked = false;
 
     /**
      * List of fragments to be notified about service state changes.
@@ -434,9 +435,47 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mDrawerToggle.onConfigurationChanged(newConfig);
     }
 
+    /**
+     * Mengecek apakah ada user lain di dalam channel yang sedang berbicara (Channel Sibuk)
+     */
+    private boolean isChannelBusy() {
+        if (mService == null || mService.getConnectionState() != se.lublin.humla.HumlaService.ConnectionState.CONNECTED) {
+            return false;
+        }
+        try {
+            int selfSession = mService.HumlaSession().getSessionId();
+            java.util.List<? extends se.lublin.humla.model.IUser> users = mService.HumlaSession().getSessionChannel().getUsers();
+            if (users != null) {
+                for (se.lublin.humla.model.IUser user : users) {
+                    if (user != null && user.getSession() != selfSession) {
+                        switch (user.getTalkState()) {
+                            case TALKING:
+                            case SHOUTING:
+                            case WHISPERING:
+                                return true; // Channel sedang dipakai user lain
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Abaikan jika sesi belum siap
+        }
+        return false;
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (mService != null && keyCode == mSettings.getPushToTalkKey()) {
+            if (event.getRepeatCount() > 0) {
+                return true;
+            }
+            // Cek apakah channel sedang sibuk oleh user lain
+            if (isChannelBusy()) {
+                mIsPttBlocked = true;
+                android.widget.Toast.makeText(this, "Channel Sibuk", android.widget.Toast.LENGTH_SHORT).show();
+                return true; // Blokir aksi tombol fisik PTT
+            }
+            mIsPttBlocked = false;
             mService.onTalkKeyDown();
             return true;
         }
@@ -446,6 +485,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (mService != null && keyCode == mSettings.getPushToTalkKey()) {
+            // Jika sebelumnya diblokir karena channel sibuk, reset penandanya saja tanpa kirim sinyal talk
+            if (mIsPttBlocked) {
+                mIsPttBlocked = false;
+                return true;
+            }
             mService.onTalkKeyUp();
             return true;
         }

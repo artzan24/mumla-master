@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Warna saat channel AKTIF (sedikit terang / putih transparan) -->
+    <item android:state_activated="true" android:color="#26FFFFFF" />
+
+    <!-- Warna default/normal (transparan atau transparan penuh) -->
+    <item android:color="@android:color/transparent" />
+</selector>

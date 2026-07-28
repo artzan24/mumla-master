@@ -10,7 +10,7 @@
     android:paddingBottom="12dp"
     android:paddingLeft="16dp"
     android:paddingRight="16dp"
-    android:background="?attr/selectableItemBackground">
+    android:background="@color/channel_bg_selector">
 
     <!-- Diubah menjadi TextView untuk menampilkan 2 huruf inisial -->
     <TextView
@@ -48,9 +48,10 @@
             android:id="@+id/channel_row_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="13sp"
-            android:textColor="#B0BEC5"
+            android:textSize="11sp"
+            android:textColor="#546E7A"
             android:layout_marginTop="3dp"
+            android:textStyle="italic"
             android:singleLine="true"
             android:text="Only you are connected"/>
     </LinearLayout>
@@ -72,8 +73,9 @@
         android:layout_width="32dp"
         android:layout_height="36dp"
         android:layout_gravity="center_vertical"
-        app:srcCompat="@drawable/ic_more_vert_black_24dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
         android:paddingLeft="8dp"
         android:tint="#B0BEC5"
-        android:background="?attr/selectableItemBackgroundBorderless"/>
+        android:visibility="gone"
+        app:srcCompat="@drawable/ic_more_vert_black_24dp" />
 </LinearLayout>
