@@ -207,46 +207,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             final Server lastServer = getService().getTargetServer();
             try {
                 final X509Certificate x509 = chain[0];
-                View layout = getLayoutInflater().inflate(R.layout.certificate_info, null);
-                TextView textView = layout.findViewById(R.id.certificate_info_text);
-                try {
-                    MessageDigest digest1 = MessageDigest.getInstance("SHA-1");
-                    MessageDigest digest2 = MessageDigest.getInstance("SHA-256");
-                    String hexDigest1 = new String(Hex.encode(digest1.digest(x509.getEncoded())))
-                            .replaceAll("(..)", "$1:");
-                    String hexDigest2 = new String(Hex.encode(digest2.digest(x509.getEncoded())))
-                            .replaceAll("(..)", "$1:");
 
-                    textView.setText(getString(R.string.certificate_info,
-                            x509.getSubjectDN().getName(),
-                            x509.getNotBefore().toString(),
-                            x509.getNotAfter().toString(),
-                            hexDigest1.substring(0, hexDigest1.length() - 1),
-                            hexDigest2.substring(0, hexDigest2.length() - 1)));
-                } catch (NoSuchAlgorithmException e) {
-                    e.printStackTrace();
-                    textView.setText(x509.toString());
-                }
-                new MaterialAlertDialogBuilder(MumlaActivity.this)
-                        .setTitle(R.string.untrusted_certificate)
-                        .setView(layout)
-                        .setPositiveButton(R.string.allow, (dialog, which) -> {
-                            // Try to add to trust store
-                            try {
-                                String alias = lastServer.getHost();
-                                KeyStore trustStore = MumlaTrustStore.getTrustStore(MumlaActivity.this);
-                                trustStore.setCertificateEntry(alias, x509);
-                                MumlaTrustStore.saveTrustStore(MumlaActivity.this, trustStore);
-                                Toast.makeText(MumlaActivity.this, R.string.trust_added, Toast.LENGTH_LONG).show();
-                                connectToServer(lastServer);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                                Toast.makeText(MumlaActivity.this, R.string.trust_add_failed, Toast.LENGTH_LONG).show();
-                            }
-                        })
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .show();
-            } catch (CertificateException e) {
+                // --- DI-BYPASS: Langsung simpan sertifikat ke trust store secara otomatis tanpa dialog ---
+                String alias = lastServer.getHost();
+                KeyStore trustStore = MumlaTrustStore.getTrustStore(MumlaActivity.this);
+                trustStore.setCertificateEntry(alias, x509);
+                MumlaTrustStore.saveTrustStore(MumlaActivity.this, trustStore);
+
+                // Langsung sambungkan ulang ke server secara otomatis
+                connectToServer(lastServer);
+
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -262,6 +233,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+        );
         mSettings = Settings.getInstance(this);
 
         super.onCreate(savedInstanceState);
@@ -485,30 +459,23 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     }
 
     private void showFirstRunGuide() {
-        // Prompt the user to generate a certificate.
         if (mSettings.isUsingCertificate()) {
             mSettings.setFirstRun(false);
             return;
         }
-        String msg = getString(R.string.first_run_generate_certificate);
-        if (BuildConfig.FLAVOR.equals("donation")) {
-            msg = getString(R.string.donation_thanks) + "\n\n" + msg;
-        }
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.first_run_generate_certificate_title)
-                .setMessage(msg)
-                .setPositiveButton(R.string.generate, (DialogInterface dialog, int which) -> {
-                    MumlaCertificateGenerateTask generateTask = new MumlaCertificateGenerateTask(MumlaActivity.this) {
-                        @Override
-                        protected void onPostExecute(DatabaseCertificate result) {
-                            super.onPostExecute(result);
-                            if (result != null) mSettings.setDefaultCertificateId(result.getId());
-                        }
-                    };
-                    generateTask.execute();
-                    mSettings.setFirstRun(false);
-                })
-                .show();
+
+        // Langsung jalankan generate otomatis tanpa memunculkan dialog selamat datang
+        MumlaCertificateGenerateTask generateTask = new MumlaCertificateGenerateTask(MumlaActivity.this) {
+            @Override
+            protected void onPostExecute(DatabaseCertificate result) {
+                super.onPostExecute(result);
+                if (result != null) {
+                    mSettings.setDefaultCertificateId(result.getId());
+                }
+            }
+        };
+        generateTask.execute();
+        mSettings.setFirstRun(false);
     }
 
     /**
