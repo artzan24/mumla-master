@@ -55,6 +55,11 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.drawable.CircleDrawable;
 import se.lublin.mumla.service.MumlaService;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 
 /**
  * Created by andrew on 31/07/13.
@@ -80,6 +85,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     private OnChannelClickListener mChannelClickListener;
     private boolean mShowChannelUserCount;
     private final FragmentManager mFragmentManager;
+
 
     public ChannelListAdapter(Context context, IHumlaService service, MumlaDatabase database,
                               FragmentManager fragmentManager, boolean showPinnedOnly,
@@ -132,24 +138,25 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 }
             });
 
-            final boolean expandUsable = channel.getSubchannels().size() > 0 ||
-                    channel.getSubchannelUserCount() > 0;
-            cvh.mChannelExpandToggle.setImageResource(node.isExpanded() ?
-                    R.drawable.ic_action_expanded : R.drawable.ic_action_collapsed);
-            cvh.mChannelExpandToggle.setOnClickListener(new View.OnClickListener() {
-
-                @Override
-                public void onClick(View v) {
-                    mExpandedChannels.put(channel.getId(), !node.isExpanded());
-                    updateChannels(); // FIXME: very inefficient.
-                    notifyDataSetChanged();
+            // Mengambil 2 huruf pertama dari nama channel untuk inisial
+            String channelName = channel.getName();
+            String initials = "";
+            if (channelName != null && !channelName.isEmpty()) {
+                String[] words = channelName.trim().split("\\s+");
+                if (words.length >= 2) {
+                    initials = (words[0].substring(0, Math.min(words[0].length(), 1)) +
+                            words[1].substring(0, Math.min(words[1].length(), 1))).toUpperCase();
+                } else if (channelName.length() >= 2) {
+                    initials = channelName.substring(0, 2).toUpperCase();
+                } else {
+                    initials = channelName.toUpperCase();
                 }
-            });
-            // Dim channel expand toggle when no subchannels exist
-            cvh.mChannelExpandToggle.setEnabled(expandUsable);
-            cvh.mChannelExpandToggle.setVisibility(expandUsable ? View.VISIBLE : View.INVISIBLE);
+            }
+            cvh.mChannelExpandToggle.setText(initials);
+            cvh.mChannelExpandToggle.setVisibility(View.VISIBLE);
+            cvh.mChannelExpandToggle.setEnabled(false);
 
-            cvh.mChannelName.setText(channel.getName());
+            cvh.mChannelName.setText(channelName);
 
             int nameTypeface = Typeface.NORMAL;
             if (mService != null && mService.isConnected()) {
@@ -163,12 +170,10 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 if (ourChan != null) {
                     if (channel.equals(ourChan)) {
                         nameTypeface |= Typeface.BOLD;
-                        // Always italicize our current channel if it has a link.
                         if (channel.getLinks().size() > 0) {
                             nameTypeface |= Typeface.ITALIC;
                         }
                     }
-                    // Italicize channels in a link with our current channel.
                     if (channel.getLinks().contains(ourChan)) {
                         nameTypeface |= Typeface.ITALIC;
                     }
@@ -177,24 +182,39 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             cvh.mChannelName.setTypeface(null, nameTypeface);
 
             // Menghitung jumlah user aktif di dalam channel
-            int userCount = channel.getUsers().size() + channel.getSubchannelUserCount();
-
-            if (userCount > 0) {
-                // Jika ada user aktif, tampilkan teks jumlahnya
-                cvh.mChannelUserCount.setVisibility(View.VISIBLE);
-                cvh.mChannelUserCount.setText(userCount + " users connected"); // Atau sesuaikan teksnya
-            } else {
-                // Jika 0 user (tidak ada yang aktif), sembunyikan tulisannya agar bersih
-                cvh.mChannelUserCount.setVisibility(View.GONE);
+            int userCount = channel.getSubchannelUserCount();
+            if (cvh.mChannelUserCount != null) {
+                if (userCount > 0) {
+                    cvh.mChannelUserCount.setVisibility(View.VISIBLE);
+                    cvh.mChannelUserCount.setText(userCount + " users active");
+                } else {
+                    cvh.mChannelUserCount.setVisibility(View.GONE); // Sembunyikan jika kosong
+                }
             }
 
-            // Ratakan margin atau batasi agar tidak terlalu menjorok jauh ke kanan
+            // 3. ATUR STATUS TOMBOL JOIN DI SINI:
+            boolean isJoined = false;
+            if (mService != null && mService.isConnected()) {
+                try {
+                    IHumlaSession session = mService.HumlaSession();
+                    if (session != null) {
+                        IChannel activeChannel = session.getSessionChannel();
+                        if (activeChannel != null) {
+                            isJoined = (channel.getId() == activeChannel.getId());
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.d(TAG, "Error checking active channel: " + e);
+                }
+            }
+            cvh.mJoinButton.setActivated(isJoined);
+
+            // Ratakan margin agar semua channel sejajar rapi ke kiri
             DisplayMetrics metrics = mContext.getResources().getDisplayMetrics();
-            // Jika ingin benar-benar sejajar rata seperti Zello, ubah pengali (misal: 10dp saja per depth) atau buat 0
-            float margin = Math.min(node.getDepth(), 1) * TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 15, metrics);
-            cvh.mChannelHolder.setPadding((int) margin,
+            int zeroPadding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 12, metrics);
+            cvh.mChannelHolder.setPadding(zeroPadding,
                     cvh.mChannelHolder.getPaddingTop(),
-                    cvh.mChannelHolder.getPaddingRight(),
+                    zeroPadding,
                     cvh.mChannelHolder.getPaddingBottom());
 
             cvh.mJoinButton.setOnClickListener(new View.OnClickListener() {
@@ -255,7 +275,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
             uvh.mUserTalkHighlight.setImageDrawable(getTalkStateDrawable(user));
 
-            // Pad the view depending on channel's nested level.
             DisplayMetrics metrics = mContext.getResources().getDisplayMetrics();
             float margin = (node.getDepth() + 1) * TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 25, metrics);
             uvh.mUserHolder.setPadding((int) margin,
@@ -330,6 +349,49 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         } catch (IllegalStateException e) {
             Log.d(TAG, "exception in updateChannels: " + e);
         }
+    }
+
+    private Drawable createInitialsDrawable(String text) {
+        if (text == null || text.isEmpty()) {
+            text = "?";
+        } else {
+            String[] words = text.trim().split("\\s+");
+            if (words.length >= 2) {
+                text = (words[0].substring(0, Math.min(words[0].length(), 1)) +
+                        words[1].substring(0, Math.min(words[1].length(), 1))).toUpperCase();
+            } else if (text.length() >= 2) {
+                text = text.substring(0, 2).toUpperCase();
+            } else {
+                text = text.toUpperCase();
+            }
+        }
+
+        int width = 96;
+        int height = 96;
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+
+        // Latar belakang lingkaran (warna abu-abu gelap ala Zello)
+        Paint bgPaint = new Paint();
+        bgPaint.setAntiAlias(true);
+        bgPaint.setColor(Color.parseColor("#37474F"));
+        canvas.drawCircle(width / 2f, height / 2f, width / 2f, bgPaint);
+
+        // Pengaturan teks di dalam lingkaran
+        Paint textPaint = new Paint();
+        textPaint.setAntiAlias(true);
+        textPaint.setColor(Color.WHITE);
+        textPaint.setTextSize(38f);
+        textPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        textPaint.setTextAlign(Paint.Align.CENTER);
+
+        // Posisi vertikal teks agar pas di tengah
+        Paint.FontMetrics fontMetrics = textPaint.getFontMetrics();
+        float y = (height / 2f) - ((fontMetrics.descent + fontMetrics.ascent) / 2f);
+
+        canvas.drawText(text, width / 2f, y, textPaint);
+
+        return new BitmapDrawable(mContext.getResources(), bitmap);
     }
 
     /**
@@ -440,10 +502,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         Node channelNode;
         int currentDepth = depth;
 
-        // Jika channel adalah Root Channel (ID 0), kita lewati penambahan barisnya ke list UI,
-        // tetapi tetap memproses anak-anak channel di dalamnya.
         if (channel.getId() == 0) {
-            channelNode = parent; // Root diabaikan sebagai node visual
+            channelNode = parent;
         } else {
             channelNode = new Node(parent, depth, channel);
             nodes.add(channelNode);
@@ -454,22 +514,14 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             if ((expandSetting == null && channel.getSubchannelUserCount() == 0)
                     || (expandSetting != null && !expandSetting)) {
                 channelNode.setExpanded(false);
-                return; // Skip adding children of contracted/empty channels.
+                return;
             }
         }
 
-        for (IUser user : channel.getUsers()) {
-            if (user == null) {
-                continue;
-            }
-            // Jika user berada di root, parent-nya disesuaikan
-            Node userParent = (channel.getId() == 0) ? parent : channelNode;
-            int userDepth = (channel.getId() == 0) ? depth : depth;
-            nodes.add(new Node(userParent, userDepth, user));
-        }
+        // PERHATIAN: Baris "for (IUser user : channel.getUsers())" dihapus/dikomentari
+        // agar user tidak tampil sebagai baris list di bawah channel.
 
         for (IChannel subc : channel.getSubchannels()) {
-            // Jika root diskip, kedalaman (depth) anak tidak perlu bertambah
             int subDepth = (channel.getId() == 0) ? depth : depth + 1;
             constructNodes(channelNode, subc, subDepth, nodes);
         }
@@ -531,7 +583,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     private static class ChannelViewHolder extends RecyclerView.ViewHolder {
         public LinearLayout mChannelHolder;
-        public ImageView mChannelExpandToggle;
+        public TextView mChannelExpandToggle;
         public TextView mChannelName;
         public TextView mChannelUserCount;
         public ImageView mJoinButton;
@@ -540,7 +592,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         public ChannelViewHolder(View itemView) {
             super(itemView);
             mChannelHolder = (LinearLayout) itemView.findViewById(R.id.channel_row_title);
-            mChannelExpandToggle = (ImageView) itemView.findViewById(R.id.channel_row_expand);
+            mChannelExpandToggle = (TextView) itemView.findViewById(R.id.channel_row_expand);
             mChannelName = (TextView) itemView.findViewById(R.id.channel_row_name);
             mChannelUserCount = (TextView) itemView.findViewById(R.id.channel_row_count);
             mJoinButton = (ImageView) itemView.findViewById(R.id.channel_row_join);

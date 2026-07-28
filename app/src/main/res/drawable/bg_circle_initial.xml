@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <!-- Warna latar belakang lingkaran (abu-abu gelap elegan) -->
+    <solid android:color="#37474F" />
+    <size
+        android:width="44dp"
+        android:height="44dp" />
+</shape>
