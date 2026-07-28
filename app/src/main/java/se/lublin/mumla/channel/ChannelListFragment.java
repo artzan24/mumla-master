@@ -227,6 +227,16 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
             } else {
                 mChannelListAdapter.setService(service);
             }
+
+            // TAMBAHKAN KODE INI:
+            if (service != null && service.isConnected()) {
+                IHumlaSession session = service.HumlaSession();
+                if (session != null && session.getSessionChannel().getId() == 0) {
+                    // Jika posisi saat ini masih di root channel (ID 0), paksa pindah ke ID 5
+                    session.joinChannel(5);
+                }
+            }
+
         } catch (RemoteException e) {
             e.printStackTrace();
         }

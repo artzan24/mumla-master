@@ -1,73 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  ~ Copyright (C) 2014 Andrew Comminos
-  ~
-  ~ This program is free software: you can redistribute it and/or modify
-  ~ it under the terms of the GNU General Public License as published by
-  ~ the Free Software Foundation, either version 3 of the License, or
-  ~ (at your option) any later version.
-  ~
-  ~ This program is distributed in the hope that it will be useful,
-  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
-  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  ~ GNU General Public License for more details.
-  ~
-  ~ You should have received a copy of the GNU General Public License
-  ~ along with this program.  If not, see <http://www.gnu.org/licenses/>.
-  -->
-
-
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/channel_row_title"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
+    android:paddingLeft="12dp"
+    android:paddingRight="12dp"
     android:background="?attr/selectableItemBackground">
 
+    <!-- Ikon Kiri (Ukurannya dibuat tetap 44dp x 44dp agar seragam dan rapi) -->
     <ImageView
         android:id="@+id/channel_row_expand"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:layout_width="48dp"
-        android:layout_height="match_parent"
-        app:srcCompat="@drawable/ic_action_collapsed"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/outline_circle_talking_off"
         android:tint="?android:attr/textColorSecondary"
-        android:padding="12dp" />
+        android:padding="10dp" />
 
-    <TextView
-        android:id="@+id/channel_row_name"
+    <!-- Kontainer Teks Nama & Status Channel -->
+    <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:gravity="center_vertical|left"
-        android:minHeight="48dp"
-        android:padding="4dp"
-        android:text="Channel name\nLine 2\nLine 3\nLine 4"/>
+        android:orientation="vertical"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
+        android:layout_gravity="center_vertical">
 
-    <TextView
-        android:id="@+id/channel_row_count"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:text="10"
-        android:textStyle="bold"
-        android:padding="10dp"/>
+        <TextView
+            android:id="@+id/channel_row_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical|left"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary"
+            android:singleLine="true"
+            android:text="Channel Name"/>
 
+        <TextView
+            android:id="@+id/channel_row_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical|left"
+            android:textSize="13sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:layout_marginTop="2dp"
+            android:singleLine="true"
+            android:text="Users connected"/>
+    </LinearLayout>
+
+    <!-- Tombol Join (Telepon/Move) di Kanan -->
     <ImageView
         android:id="@+id/channel_row_join"
-        android:layout_width="32dp"
-        android:layout_height="match_parent"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="center_vertical"
         app:srcCompat="@drawable/ic_action_move"
-        android:tint="?android:attr/textColorSecondary"
+        android:tint="#4CAF50"
+        android:padding="6dp"
         android:background="?attr/selectableItemBackgroundBorderless"/>
 
+    <!-- Tombol Opsi Titik Tiga -->
     <ImageView
         android:id="@+id/channel_row_more"
         android:layout_width="32dp"
-        android:layout_height="match_parent"
+        android:layout_height="36dp"
+        android:layout_gravity="center_vertical"
         app:srcCompat="@drawable/ic_more_vert_black_24dp"
-        android:layout_gravity="center"
         android:paddingLeft="8dp"
-        android:tint="?android:textColorSecondary"
+        android:tint="?android:attr/textColorSecondary"
         android:background="?attr/selectableItemBackgroundBorderless"/>
 </LinearLayout>

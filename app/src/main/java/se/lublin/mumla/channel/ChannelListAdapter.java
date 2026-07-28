@@ -176,17 +176,22 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             }
             cvh.mChannelName.setTypeface(null, nameTypeface);
 
-            if (mShowChannelUserCount) {
+            // Menghitung jumlah user aktif di dalam channel
+            int userCount = channel.getUsers().size() + channel.getSubchannelUserCount();
+
+            if (userCount > 0) {
+                // Jika ada user aktif, tampilkan teks jumlahnya
                 cvh.mChannelUserCount.setVisibility(View.VISIBLE);
-                int userCount = channel.getSubchannelUserCount();
-                cvh.mChannelUserCount.setText(String.format("%d", userCount));
+                cvh.mChannelUserCount.setText(userCount + " users connected"); // Atau sesuaikan teksnya
             } else {
+                // Jika 0 user (tidak ada yang aktif), sembunyikan tulisannya agar bersih
                 cvh.mChannelUserCount.setVisibility(View.GONE);
             }
 
-            // Pad the view depending on channel's nested level.
+            // Ratakan margin atau batasi agar tidak terlalu menjorok jauh ke kanan
             DisplayMetrics metrics = mContext.getResources().getDisplayMetrics();
-            float margin = node.getDepth() * TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 25, metrics);
+            // Jika ingin benar-benar sejajar rata seperti Zello, ubah pengali (misal: 10dp saja per depth) atau buat 0
+            float margin = Math.min(node.getDepth(), 1) * TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 15, metrics);
             cvh.mChannelHolder.setPadding((int) margin,
                     cvh.mChannelHolder.getPaddingTop(),
                     cvh.mChannelHolder.getPaddingRight(),
@@ -431,24 +436,42 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
      */
     private void constructNodes(Node parent, IChannel channel, int depth,
                                 List<Node> nodes) {
-        Node channelNode = new Node(parent, depth, channel);
-        nodes.add(channelNode);
+
+        Node channelNode;
+        int currentDepth = depth;
+
+        // Jika channel adalah Root Channel (ID 0), kita lewati penambahan barisnya ke list UI,
+        // tetapi tetap memproses anak-anak channel di dalamnya.
+        if (channel.getId() == 0) {
+            channelNode = parent; // Root diabaikan sebagai node visual
+        } else {
+            channelNode = new Node(parent, depth, channel);
+            nodes.add(channelNode);
+        }
 
         Boolean expandSetting = mExpandedChannels.get(channel.getId());
-        if ((expandSetting == null && channel.getSubchannelUserCount() == 0)
-                || (expandSetting != null && !expandSetting)) {
-            channelNode.setExpanded(false);
-            return; // Skip adding children of contracted/empty channels.
+        if (channel.getId() != 0) {
+            if ((expandSetting == null && channel.getSubchannelUserCount() == 0)
+                    || (expandSetting != null && !expandSetting)) {
+                channelNode.setExpanded(false);
+                return; // Skip adding children of contracted/empty channels.
+            }
         }
 
         for (IUser user : channel.getUsers()) {
             if (user == null) {
                 continue;
             }
-            nodes.add(new Node(channelNode, depth, user));
+            // Jika user berada di root, parent-nya disesuaikan
+            Node userParent = (channel.getId() == 0) ? parent : channelNode;
+            int userDepth = (channel.getId() == 0) ? depth : depth;
+            nodes.add(new Node(userParent, userDepth, user));
         }
+
         for (IChannel subc : channel.getSubchannels()) {
-            constructNodes(channelNode, subc, depth + 1, nodes);
+            // Jika root diskip, kedalaman (depth) anak tidak perlu bertambah
+            int subDepth = (channel.getId() == 0) ? depth : depth + 1;
+            constructNodes(channelNode, subc, subDepth, nodes);
         }
     }
 
