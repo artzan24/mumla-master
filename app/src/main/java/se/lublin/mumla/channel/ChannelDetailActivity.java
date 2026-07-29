@@ -263,6 +263,20 @@ public class ChannelDetailActivity extends AppCompatActivity {
         // 2. Update State & Visual Tombol PTT
         if (mBtnPtt != null) {
             mBtnPtt.setEnabled(isPttEnabled);
+            // Ubah ikon mikrofon berdasarkan kondisi PTT aktif/tidak
+            if (mBtnPtt instanceof ImageView) {
+                if (isPttEnabled) {
+                    ((ImageView) mBtnPtt).setImageResource(R.drawable.ic_action_microphone);
+                } else {
+                    ((ImageView) mBtnPtt).setImageResource(R.drawable.ic_mic_off);
+                }
+            } else if (mBtnPtt instanceof ImageButton) {
+                if (isPttEnabled) {
+                    ((ImageButton) mBtnPtt).setImageResource(R.drawable.ic_action_microphone);
+                } else {
+                    ((ImageButton) mBtnPtt).setImageResource(R.drawable.ic_mic_off);
+                }
+            }
             mBtnPtt.refreshDrawableState();
         }
 

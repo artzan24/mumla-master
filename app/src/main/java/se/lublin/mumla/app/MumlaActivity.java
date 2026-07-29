@@ -21,7 +21,6 @@ import static java.util.Objects.requireNonNull;
 
 import android.Manifest;
 import android.content.ComponentName;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
@@ -43,7 +42,6 @@ import android.widget.AdapterView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ListView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -64,15 +62,11 @@ import androidx.preference.PreferenceManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.jetbrains.annotations.NotNull;
-import org.spongycastle.util.encoders.Hex;
 
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.Socket;
 import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
@@ -108,6 +102,7 @@ import se.lublin.mumla.service.MumlaService;
 import se.lublin.mumla.util.HumlaServiceFragment;
 import se.lublin.mumla.util.HumlaServiceProvider;
 import se.lublin.mumla.util.MumlaTrustStore;
+import se.lublin.humla.IHumlaService;
 
 public class MumlaActivity extends AppCompatActivity implements ListView.OnItemClickListener,
         FavouriteServerListFragment.ServerConnectHandler, HumlaServiceProvider, DatabaseProvider,
@@ -245,6 +240,13 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
+        if (getSupportActionBar() != null) {
+            // Mengaktifkan tombol home/kiri atas dan memaksa menjadi ikon Settings/Gear
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setHomeButtonEnabled(true);
+            getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
+        }
+
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -270,7 +272,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         preferences.registerOnSharedPreferenceChangeListener(this);
 
-        mDatabase = new MumlaSQLiteDatabase(this); // TODO add support for cloud storage
+        mDatabase = new MumlaSQLiteDatabase(this);
         mDatabase.open();
 
         mDrawerLayout = findViewById(R.id.drawer_layout);
@@ -296,33 +298,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mDrawerList.setOnItemClickListener(this);
         mDrawerAdapter = new DrawerAdapter(this, this);
         mDrawerList.setAdapter(mDrawerAdapter);
-        mDrawerToggle = new ActionBarDrawerToggle(this, mDrawerLayout, toolbar, R.string.drawer_open, R.string.drawer_close) {
-            @Override
-            public void onDrawerClosed(View drawerView) {
-                supportInvalidateOptionsMenu();
-            }
 
-            @Override
-            public void onDrawerStateChanged(int newState) {
-                super.onDrawerStateChanged(newState);
-                // Prevent push to talk from getting stuck on when the drawer is opened.
-                if (getService() != null && getService().isConnected()) {
-                    IHumlaSession session = getService().HumlaSession();
-                    if (session.isTalking() && !mSettings.isPushToTalkToggle()) {
-                        session.setTalkingState(false);
-                    }
-                }
-            }
-
-            @Override
-            public void onDrawerOpened(View drawerView) {
-                supportInvalidateOptionsMenu();
-            }
-        };
-
-        mDrawerLayout.setDrawerListener(mDrawerToggle);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setHomeButtonEnabled(true);
+        // MENGUNCI DRAWER AGAR TIDAK BISA DIBUKA
+        mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
 
         if (savedInstanceState == null) {
             if (getIntent() != null && getIntent().hasExtra(EXTRA_DRAWER_FRAGMENT)) {
@@ -333,14 +311,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
         }
 
-        // If we're given a Mumble URL to show, open up a server edit fragment.
         if (getIntent() != null &&
                 Intent.ACTION_VIEW.equals(getIntent().getAction())) {
             String url = getIntent().getDataString();
             try {
                 Server server = MumbleURLParser.parseURL(url);
-
-                // Open a dialog prompting the user to connect to the Mumble server.
                 DialogFragment fragment = ServerEditFragment.createServerEditDialog(
                         MumlaActivity.this, server, ServerEditFragment.Action.CONNECT_ACTION, true);
                 fragment.show(getSupportFragmentManager(), "url_edit");
@@ -354,8 +329,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC);
 
         if (savedInstanceState == null) {
-            // Got no instance bundle: this is run only on real app startup -- not when Android
-            // recreates the activity on configuration change, like screen rotation.
             if (mSettings.isFirstRun()) {
                 showFirstRunGuide();
             } else {
@@ -367,7 +340,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
-        mDrawerToggle.syncState();
+        //mDrawerToggle.syncState();
     }
 
     @Override
@@ -406,38 +379,41 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     @Override
     public boolean onPrepareOptionsMenu(Menu menu) {
         MenuItem disconnectButton = menu.findItem(R.id.action_disconnect);
-        disconnectButton.setVisible(mService != null && mService.isConnected());
+        if (disconnectButton != null) {
+            disconnectButton.setVisible(mService != null && mService.isConnected());
+        }
 
         return super.onPrepareOptionsMenu(menu);
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.mumla, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NotNull MenuItem item) {
-        if (mDrawerToggle.onOptionsItemSelected(item))
-            return true;
+    public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == R.id.action_disconnect) {
-            getService().disconnect();
+            // Memastikan mService tersedia dan sedang terhubung
+            if (mService != null && mService.isConnected()) {
+                new MaterialAlertDialogBuilder(this) // Gunakan getContext() jika diletakkan di Fragment
+                        .setMessage(getString(R.string.disconnectSure, mService.getTargetServer().getName()))
+                        .setPositiveButton(R.string.confirm, (dialog, which) -> {
+                            // Perintah untuk memutus koneksi
+                            mService.disconnect();
+                            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show();
+            }
             return true;
         }
-        return false;
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
     public void onConfigurationChanged(@NotNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        mDrawerToggle.onConfigurationChanged(newConfig);
+        if (mDrawerToggle != null) {
+            mDrawerToggle.onConfigurationChanged(newConfig);
+        }
     }
 
-    /**
-     * Mengecek apakah ada user lain di dalam channel yang sedang berbicara (Channel Sibuk)
-     */
     private boolean isChannelBusy() {
         if (mService == null || mService.getConnectionState() != se.lublin.humla.HumlaService.ConnectionState.CONNECTED) {
             return false;
@@ -452,13 +428,13 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             case TALKING:
                             case SHOUTING:
                             case WHISPERING:
-                                return true; // Channel sedang dipakai user lain
+                                return true;
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            // Abaikan jika sesi belum siap
+            // Ignore
         }
         return false;
     }
@@ -469,11 +445,10 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             if (event.getRepeatCount() > 0) {
                 return true;
             }
-            // Cek apakah channel sedang sibuk oleh user lain
             if (isChannelBusy()) {
                 mIsPttBlocked = true;
-                android.widget.Toast.makeText(this, "Channel Sibuk", android.widget.Toast.LENGTH_SHORT).show();
-                return true; // Blokir aksi tombol fisik PTT
+                Toast.makeText(this, "Channel Sibuk", Toast.LENGTH_SHORT).show();
+                return true;
             }
             mIsPttBlocked = false;
             mService.onTalkKeyDown();
@@ -485,7 +460,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (mService != null && keyCode == mSettings.getPushToTalkKey()) {
-            // Jika sebelumnya diblokir karena channel sibuk, reset penandanya saja tanpa kirim sinyal talk
             if (mIsPttBlocked) {
                 mIsPttBlocked = false;
                 return true;
@@ -508,7 +482,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             return;
         }
 
-        // Langsung jalankan generate otomatis tanpa memunculkan dialog selamat datang
         MumlaCertificateGenerateTask generateTask = new MumlaCertificateGenerateTask(MumlaActivity.this) {
             @Override
             protected void onPostExecute(DatabaseCertificate result) {
@@ -522,9 +495,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mSettings.setFirstRun(false);
     }
 
-    /**
-     * Loads a fragment from the drawer.
-     */
     private void loadDrawerFragment(int fragmentId) {
         Class<? extends Fragment> fragmentClass = null;
         Bundle args = new Bundle();
@@ -600,12 +570,10 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         Server server = mServerPendingPerm;
         mServerPendingPerm = null;
 
-        // Check if we're already connected to a server; if so, inform user.
         if (mService != null && mService.isConnected()) {
             new MaterialAlertDialogBuilder(this)
                     .setMessage(R.string.reconnect_dialog_message)
                     .setPositiveButton(R.string.connect, (dialog, which) -> {
-                        // Register an observer to reconnect to the new server once disconnected.
                         mService.registerObserver(new HumlaObserver() {
                             @Override
                             public void onDisconnected(HumlaException e) {
@@ -643,7 +611,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         connectTask.execute(server);
     }
 
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
@@ -665,7 +632,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             case PERMISSIONS_REQUEST_POST_NOTIFICATIONS:
                 mPermPostNotificationsAsked = true;
                 if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
-                    // This is inspired by https://stackoverflow.com/a/34612503
                     if (ActivityCompat.shouldShowRequestPermissionRationale(MumlaActivity.this,
                             Manifest.permission.POST_NOTIFICATIONS)) {
                         Toast.makeText(MumlaActivity.this,
@@ -680,17 +646,14 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private boolean isPortOpen(final String host, final int port, final int timeout) {
         final AtomicBoolean open = new AtomicBoolean(false);
         try {
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Socket socket = new Socket();
-                        socket.connect(new InetSocketAddress(host, port), timeout);
-                        socket.close();
-                        open.set(true);
-                    } catch (Exception e) {
-                        Log.d(TAG, "isPortOpen() run()" + e);
-                    }
+            Thread thread = new Thread(() -> {
+                try {
+                    Socket socket = new Socket();
+                    socket.connect(new InetSocketAddress(host, port), timeout);
+                    socket.close();
+                    open.set(true);
+                } catch (Exception e) {
+                    Log.d(TAG, "isPortOpen() run()" + e);
                 }
             });
             thread.start();
@@ -732,14 +695,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         }
     }
 
-    /**
-     * Updates the activity to represent the connection state of the given service.
-     * Will show reconnecting dialog if reconnecting, dismiss otherwise, etc.
-     * Basically, this service will do catch-up if the activity wasn't bound to receive
-     * connection state updates.
-     *
-     * @param service A bound IHumlaService.
-     */
     private void updateConnectionState(IHumlaService service) {
         if (mConnectingDialog != null) {
             mConnectingDialog.dismiss();
@@ -747,11 +702,13 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         if (mErrorDialog != null)
             mErrorDialog.dismiss();
 
+        if (mService == null) {
+            return;
+        }
+
         switch (mService.getConnectionState()) {
             case CONNECTING:
                 Server server = service.getTargetServer();
-                // SRV lookup is done later, so we no longer show the port in the connection
-                // progress dialog (and only the configured hostname)
                 mConnectingDialog = new MaterialAlertDialogBuilder(this)
                         .setTitle(getString(R.string.connecting_to_server, server.getHost()) + (mSettings.isTorEnabled() ? " (Tor)" : ""))
                         .setView(R.layout.dialog_progress)
@@ -765,23 +722,21 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 mConnectingDialog.show();
                 break;
             case CONNECTION_LOST:
-                // Only bother the user if the error hasn't already been shown.
-                if (getService() != null && !getService().isErrorShown()) {
-                    // TODO? bail out if service gone -- it is happening!
-                    if (getService() == null) {
-                        break;
-                    }
+                // Cast ke IMumlaService agar method isErrorShown dan markErrorShown bisa diakses
+                IMumlaService mumlaService = (IMumlaService) getService();
+                if (mumlaService != null && !mumlaService.isErrorShown()) {
                     MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(MumlaActivity.this);
                     builder.setTitle(getString(R.string.connectionRefused) + (mSettings.isTorEnabled() ? " (Tor)" : ""));
-                    HumlaException error = getService().getConnectionError();
+                    HumlaException error = mumlaService.getConnectionError();
                     if (error != null && mService.isReconnecting()) {
                         builder.setMessage(error.getMessage() + "\n\n"
                                 + getString(R.string.attempting_reconnect,
                                 error.getCause() != null ? error.getCause().getMessage() : "unknown"));
                         builder.setPositiveButton(R.string.cancel_reconnect, (dialog, which) -> {
-                            if (getService() != null) {
-                                getService().cancelReconnect();
-                                getService().markErrorShown();
+                            IMumlaService innerService = (IMumlaService) getService();
+                            if (innerService != null) {
+                                innerService.cancelReconnect();
+                                innerService.markErrorShown();
                             }
                         });
                     } else if (error != null &&
@@ -795,7 +750,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                         builder.setMessage(error.getMessage());
                         builder.setView(passwordField);
                         builder.setPositiveButton(R.string.reconnect, (dialog, which) -> {
-                            Server server1 = getService().getTargetServer();
+                            Server server1 = mumlaService.getTargetServer();
                             if (server1 == null) {
                                 return;
                             }
@@ -807,22 +762,26 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             connectToServer(server1);
                         });
                         builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> {
-                            if (getService() != null) {
-                                getService().markErrorShown();
+                            IMumlaService innerService = (IMumlaService) getService();
+                            if (innerService != null) {
+                                innerService.markErrorShown();
                             }
                         });
                     } else {
                         String msg = error != null ? error.getMessage() : getString(R.string.unknown);
                         builder.setMessage(msg);
                         builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                            if (getService() != null) {
-                                getService().markErrorShown();
+                            IMumlaService innerService = (IMumlaService) getService();
+                            if (innerService != null) {
+                                innerService.markErrorShown();
                             }
                         });
                     }
                     builder.setCancelable(false);
                     mErrorDialog = builder.show();
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -835,7 +794,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     public IMumlaService getService() {
         return mService;
     }
-
     @Override
     public MumlaDatabase getDatabase() {
         return mDatabase;
@@ -843,7 +801,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     public void addServiceFragment(HumlaServiceFragment fragment) {
-        mServiceFragments.add(fragment);
+        if (!mServiceFragments.contains(fragment)) {
+            mServiceFragments.add(fragment);
+        }
     }
 
     @Override

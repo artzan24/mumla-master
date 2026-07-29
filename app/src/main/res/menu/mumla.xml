@@ -21,4 +21,9 @@
         android:title="@string/disconnect"
         android:orderInCategory="99"
         app:showAsAction="never"/>
+
+    <item android:id="@+id/action_settings"
+        android:title="@string/action_settings"
+        android:orderInCategory="100"
+        app:showAsAction="never"/>
 </menu>
