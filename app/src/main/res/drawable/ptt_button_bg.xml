@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- State saat Ditekan (Pressed) -->
-    <item android:state_pressed="true">
+    <!-- 1. State saat Tombol Dinonaktifkan (Enabled = false) / Belum Join -->
+    <item android:state_enabled="false">
         <shape android:shape="oval">
-            <solid android:color="?attr/pttPressed" />
-            <stroke android:width="5dp" android:color="#FF9800" />
+            <!-- Warna background dan border dibuat lebih gelap/pudar -->
+            <solid android:color="#303030" />
+            <stroke android:width="5dp" android:color="#555555" />
         </shape>
     </item>
 
-    <!-- State saat Aktif / Bicara (Activated / Selected) -->
+    <!-- 2. State saat Aktif / Bicara (Selected) -->
     <item android:state_selected="true">
         <shape android:shape="oval">
             <solid android:color="?attr/pttPressed" />
@@ -17,7 +18,15 @@
         </shape>
     </item>
 
-    <!-- State Normal (Default) -->
+    <!-- 3. State saat Ditekan (Pressed) -->
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="?attr/pttPressed" />
+            <stroke android:width="5dp" android:color="#FF9800" />
+        </shape>
+    </item>
+
+    <!-- 4. State Normal (Default) -->
     <item>
         <shape android:shape="oval">
             <solid android:color="?attr/colorPrimary" />

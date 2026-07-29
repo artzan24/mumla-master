@@ -129,13 +129,12 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         if (node.isChannel()) {
             final IChannel channel = node.getChannel();
             final ChannelViewHolder cvh = (ChannelViewHolder) viewHolder;
-            cvh.itemView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    if (mChannelClickListener != null) {
-                        mChannelClickListener.onChannelClick(channel);
-                    }
-                }
+            cvh.itemView.setOnClickListener(v -> {
+                android.content.Intent intent = new android.content.Intent(mContext, ChannelDetailActivity.class);
+                intent.putExtra("channel_id", channel.getId());
+                intent.putExtra("channel_name", channel.getName());
+                intent.putExtra("channel_description", channel.getDescription()); // <--- Tambahkan baris ini
+                mContext.startActivity(intent);
             });
 
             // Mengambil 2 huruf pertama dari nama channel untuk inisial

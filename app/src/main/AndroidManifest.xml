@@ -161,6 +161,11 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".channel.ChannelDetailActivity"
+            android:theme="@style/Theme.Mumla"
+            android:parentActivityName=".app.MumlaActivity"
+            android:exported="false" />
     </application>
 
 </manifest>
