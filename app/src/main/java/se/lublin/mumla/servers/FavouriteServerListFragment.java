@@ -18,6 +18,7 @@
 package se.lublin.mumla.servers;
 
 import android.app.Activity;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -28,7 +29,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.GridView;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.fragment.app.Fragment;
 
@@ -39,6 +44,7 @@ import java.util.List;
 import se.lublin.humla.model.Server;
 import se.lublin.mumla.R;
 import se.lublin.mumla.db.DatabaseProvider;
+import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.db.PublicServer;
 
 /**
@@ -80,7 +86,78 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
         mServerGrid.setEmptyView(view.findViewById(R.id.server_list_grid_empty));
 
         registerForContextMenu(mServerGrid);
+        // Menambahkan event klik untuk teks + Add Server
+        TextView addServerText = (TextView) view.findViewById(R.id.menu_add_server_text);
+        if (addServerText != null) {
+            addServerText.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    showAddServerDialog();
+                }
+            });
+        }
         return view;
+    }
+
+    private void showAddServerDialog() {
+        LayoutInflater inflater = LayoutInflater.from(requireActivity());
+        View dialogView = inflater.inflate(R.layout.dialog_server_edit, null);
+
+        final EditText nameField = dialogView.findViewById(R.id.server_edit_name);
+        final EditText hostField = dialogView.findViewById(R.id.server_edit_host);
+        final EditText portField = dialogView.findViewById(R.id.server_edit_port);
+        final EditText userField = dialogView.findViewById(R.id.server_edit_username);
+        final EditText passField = dialogView.findViewById(R.id.server_edit_password);
+
+        new MaterialAlertDialogBuilder(requireActivity())
+                .setTitle(R.string.add)
+                .setView(dialogView)
+                .setPositiveButton(R.string.add, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        String name = nameField.getText().toString().trim();
+                        String host = hostField.getText().toString().trim();
+                        String portStr = portField.getText().toString().trim();
+                        String username = userField.getText().toString().trim();
+                        String password = passField.getText().toString().trim();
+
+                        if (!host.isEmpty()) {
+                            int port = 64738;
+                            try {
+                                if (!portStr.isEmpty()) {
+                                    port = Integer.parseInt(portStr);
+                                }
+                            } catch (NumberFormatException e) {
+                                port = 64738;
+                            }
+
+                            if (name.isEmpty()) {
+                                name = host;
+                            }
+
+                            Server server = new Server(
+                                    -1,
+                                    name,
+                                    host,
+                                    port,
+                                    username,
+                                    password
+                            );
+
+                            if (mDatabaseProvider != null) {
+                                MumlaDatabase database = mDatabaseProvider.getDatabase();
+                                if (database != null) {
+                                    database.addServer(server);
+                                    Toast.makeText(requireActivity(), "Server ditambahkan", Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        } else {
+                            Toast.makeText(requireActivity(), "Host tidak boleh kosong", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     @Override

@@ -388,14 +388,26 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            Intent intent = new Intent(this, se.lublin.mumla.preference.SettingsActivity.class);
+            startActivity(intent);
+            return true;
+        }
+
         if (item.getItemId() == R.id.action_disconnect) {
-            // Memastikan mService tersedia dan sedang terhubung
             if (mService != null && mService.isConnected()) {
-                new MaterialAlertDialogBuilder(this) // Gunakan getContext() jika diletakkan di Fragment
-                        .setMessage(getString(R.string.disconnectSure, mService.getTargetServer().getName()))
+                Server targetServer = mService.getTargetServer();
+                String serverName = (targetServer != null && targetServer.getName() != null)
+                        ? targetServer.getName()
+                        : "Server";
+
+                new MaterialAlertDialogBuilder(this)
+                        .setMessage(getString(R.string.disconnectSure, serverName))
                         .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                            // Perintah untuk memutus koneksi
-                            mService.disconnect();
+                            // Tambahkan pengaman null di sini agar tidak force close
+                            if (mService != null) {
+                                mService.disconnect();
+                            }
                             loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
                         })
                         .setNegativeButton(android.R.string.cancel, null)
@@ -403,6 +415,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
             return true;
         }
+
         return super.onOptionsItemSelected(item);
     }
 
@@ -496,6 +509,18 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     }
 
     private void loadDrawerFragment(int fragmentId) {
+        // 1. Atur visibilitas toolbar secara dinamis berdasarkan halaman yang dipilih
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        if (toolbar != null) {
+            if (fragmentId == DrawerAdapter.ITEM_FAVOURITES) {
+                // Sembunyikan toolbar total khusus di halaman Favorites (gaya Fancy Mumble)
+                toolbar.setVisibility(View.GONE);
+            } else {
+                // Tampilkan kembali toolbar untuk halaman Channel, Info, dll.
+                toolbar.setVisibility(View.VISIBLE);
+            }
+        }
+
         Class<? extends Fragment> fragmentClass = null;
         Bundle args = new Bundle();
         switch (fragmentId) {
@@ -528,12 +553,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             default:
                 return;
         }
+
         Fragment fragment = Fragment.instantiate(this, fragmentClass.getName(), args);
         getSupportFragmentManager().beginTransaction()
                 .replace(R.id.content_frame, fragment, fragmentClass.getName())
                 .setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
                 .commit();
-        requireNonNull(getSupportActionBar()).setTitle(mDrawerAdapter.getItemWithId(fragmentId).title);
+
+        // Ubah judul toolbar hanya jika toolbar sedang ditampilkan
+        if (toolbar != null && toolbar.getVisibility() == View.VISIBLE) {
+            requireNonNull(getSupportActionBar()).setTitle(mDrawerAdapter.getItemWithId(fragmentId).title);
+        }
     }
 
     public void connectToServer(final Server server) {

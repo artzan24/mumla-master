@@ -517,10 +517,13 @@ public class ChannelChatFragment extends HumlaServiceFragment implements ChatTar
                 public void visit(IChatMessage.TextMessage message) {
                     IMessage textMessage = message.getMessage();
                     String targetMessage = getContext().getString(R.string.unknown);
-                    boolean selfAuthored;
+                    boolean selfAuthored = false;
                     try {
-                        selfAuthored = textMessage.getActor() == mService.HumlaSession().getSessionId();
-                    } catch (HumlaDisconnectedException e) {
+                        if (mService != null && mService.isConnected()) {
+                            selfAuthored = textMessage.getActor() == mService.HumlaSession().getSessionId();
+                        }
+                    } catch (HumlaDisconnectedException | IllegalStateException e) {
+                        Log.d(TAG, "Not synchronized or disconnected during chat render: " + e);
                         selfAuthored = false;
                     }
 
