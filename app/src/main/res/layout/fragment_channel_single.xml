@@ -4,83 +4,91 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:windowBackground">
+    android:background="?android:attr/colorBackground">
 
-    <!-- Toolbar Atas (Hanya untuk Judul & Tombol Back) -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar_single"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?colorPrimary"
-        android:elevation="4dp"
-        app:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
-
-    <!-- Header Informasi Channel dengan Tombol Gabung di Sebelah Kanan Nama -->
+    <!-- Kontainer Header & Toolbar yang menembus status bar (Edge-to-Edge) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingTop="16dp"
-        android:paddingBottom="16dp"
-        android:paddingStart="60dp"
-        android:paddingEnd="16dp"
+        android:fitsSystemWindows="true"
+        android:orientation="vertical"
         android:background="?colorPrimary">
 
-        <!-- Info Channel (Nama & Status) di Kiri -->
+        <!-- Toolbar Atas (Hanya untuk Judul & Tombol Back) -->
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar_single"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@android:color/transparent"
+            android:elevation="4dp"
+            app:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+
+        <!-- Header Informasi Channel dengan Tombol Gabung di Sebelah Kanan Nama -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="16dp"
+            android:paddingStart="60dp"
+            android:paddingEnd="16dp">
 
-            <TextView
-                android:id="@+id/single_channel_description"
-                android:layout_width="wrap_content"
+            <!-- Info Channel (Nama & Status) di Kiri -->
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Deskripsi Channel"
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/single_channel_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Status: Belum Terhubung"
-                android:textColor="@android:color/white"
-                android:textSize="11sp"
-                android:textStyle="italic"
-                android:layout_marginTop="10dp" />
+                <TextView
+                    android:id="@+id/single_channel_description"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Deskripsi Channel"
+                    android:textColor="@android:color/white"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tv_channel_busy_state"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Channel: Idle"
-                android:textSize="11sp"
-                android:textColor="@android:color/white"
-                android:gravity="center_vertical"
-                android:drawablePadding="11dp"
-                android:layout_marginTop="4dp"
-                android:textStyle="italic"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/single_channel_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Status: Belum Terhubung"
+                    android:textColor="@android:color/white"
+                    android:textSize="11sp"
+                    android:textStyle="italic"
+                    android:layout_marginTop="10dp" />
 
-            <TextView
-                android:id="@+id/tv_talking_info"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text=""
-                android:textSize="12sp"
-                android:textColor="#FFB74D"
-                android:gravity="center_vertical"
-                android:drawablePadding="10dp"
-                android:visibility="gone"
-                android:textStyle="italic"
-                android:layout_marginTop="8dp" />
+                <TextView
+                    android:id="@+id/tv_channel_busy_state"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Channel: Idle"
+                    android:textSize="11sp"
+                    android:textColor="@android:color/white"
+                    android:gravity="center_vertical"
+                    android:drawablePadding="11dp"
+                    android:layout_marginTop="4dp"
+                    android:textStyle="italic"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tv_talking_info"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textSize="12sp"
+                    android:textColor="#FFB74D"
+                    android:gravity="center_vertical"
+                    android:drawablePadding="10dp"
+                    android:visibility="gone"
+                    android:textStyle="italic"
+                    android:layout_marginTop="8dp" />
+            </LinearLayout>
+
         </LinearLayout>
-
     </LinearLayout>
 
     <!-- Konten Utama / List User -->
@@ -115,6 +123,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:padding="12dp"
+        android:layout_marginBottom="20dp"
         android:orientation="vertical">
 
         <ImageButton

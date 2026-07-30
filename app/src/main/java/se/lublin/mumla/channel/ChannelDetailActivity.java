@@ -96,7 +96,6 @@ public class ChannelDetailActivity extends AppCompatActivity {
         tvTalkingInfo = findViewById(R.id.tv_talking_info);
         TextView tvChannelDesc = findViewById(R.id.single_channel_description);
 
-        // Menggunakan ImageButton sesuai layout XML Anda
         mBtnPtt = findViewById(R.id.pushtotalk);
 
         if (tvChannelDesc != null) {
@@ -222,6 +221,24 @@ public class ChannelDetailActivity extends AppCompatActivity {
         return true;
     }
 
+    private void showPermissionDeniedDialog() {
+        if (!isFinishing()) {
+            androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.perm_denied))
+                    .setMessage(getString(R.string.perm_denied))
+                    .setPositiveButton("OK", (d, which) -> d.dismiss())
+                    .create();
+
+            // Tampilkan dialog terlebih dahulu agar window-nya terinisialisasi
+            dialog.show();
+
+            // Ubah latar belakang window dialog menjadi transparan dan terapkan sudut melengkung
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawableResource(R.drawable.bg_rounded_dialog);
+            }
+        }
+    }
+
     private void handleJoinAction() {
         if (mService != null) {
             try {
@@ -229,19 +246,21 @@ public class ChannelDetailActivity extends AppCompatActivity {
                     IHumlaSession session = mService.HumlaSession();
                     if (session != null) {
                         session.joinChannel(mChannelId);
-                        Toast.makeText(this, "Mengirim permintaan bergabung...", Toast.LENGTH_SHORT).show();
 
-                        new Handler(Looper.getMainLooper()).postDelayed(() -> updateJoinStateUI(), 300);
+                        // Cek setelah jeda singkat apakah server menolak masuk
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            if (!isUserJoinedToChannel()) {
+                                showPermissionDeniedDialog();
+                            }
+                            updateJoinStateUI();
+                        }, 500);
                     }
                 } else {
                     Toast.makeText(this, "Tidak terhubung ke server", Toast.LENGTH_SHORT).show();
                 }
-            } catch (IllegalStateException e) {
-                Log.e(TAG, "Error joining channel (Access/ACL denied): " + e);
-                Toast.makeText(this, "Gagal bergabung: Akses ditolak atau tidak diizinkan (ACL)", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Log.e(TAG, "Unexpected error joining channel: " + e);
-                Toast.makeText(this, "Gagal bergabung ke channel", Toast.LENGTH_SHORT).show();
+                Log.e(TAG, "Error joining channel: " + e);
+                showPermissionDeniedDialog();
             }
         } else {
             Toast.makeText(this, "Layanan belum siap", Toast.LENGTH_SHORT).show();
@@ -263,7 +282,6 @@ public class ChannelDetailActivity extends AppCompatActivity {
         // 2. Update State & Visual Tombol PTT
         if (mBtnPtt != null) {
             mBtnPtt.setEnabled(isPttEnabled);
-            // Ubah ikon mikrofon berdasarkan kondisi PTT aktif/tidak
             if (mBtnPtt instanceof ImageView) {
                 if (isPttEnabled) {
                     ((ImageView) mBtnPtt).setImageResource(R.drawable.ic_action_microphone);
@@ -297,17 +315,17 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 tvChannelBusyState.setVisibility(View.VISIBLE);
                 if (isChannelBusy()) {
                     tvChannelBusyState.setText("Channel Status: Busy");
-                    tvChannelBusyState.setTextColor(android.graphics.Color.parseColor("#FF9800")); // Oranye
+                    tvChannelBusyState.setTextColor(android.graphics.Color.parseColor("#FF9800"));
                 } else {
                     tvChannelBusyState.setText("Channel Status: Idle");
-                    tvChannelBusyState.setTextColor(android.graphics.Color.parseColor("#4CAF50")); // Hijau
+                    tvChannelBusyState.setTextColor(android.graphics.Color.parseColor("#4CAF50"));
                 }
             } else {
                 tvChannelBusyState.setVisibility(View.GONE);
             }
         }
 
-        // 5. Update Info User yang Berbicara (Beserta icon ic_talking)
+        // 5. Update Info User yang Berbicara
         if (tvTalkingInfo != null) {
             String talkingUser = getTalkingUserName();
             if (isJoined && talkingUser != null) {
@@ -347,12 +365,10 @@ public class ChannelDetailActivity extends AppCompatActivity {
             return false;
         }
         try {
-            int selfSession = mService.HumlaSession().getSessionId();
             java.util.List<? extends se.lublin.humla.model.IUser> users = mService.HumlaSession().getSessionChannel().getUsers();
             if (users != null) {
                 for (se.lublin.humla.model.IUser user : users) {
                     if (user != null) {
-                        // Cek apakah user (baik diri sendiri maupun orang lain) sedang bicara
                         switch (user.getTalkState()) {
                             case TALKING:
                             case SHOUTING:
@@ -382,7 +398,6 @@ public class ChannelDetailActivity extends AppCompatActivity {
                             case TALKING:
                             case SHOUTING:
                             case WHISPERING:
-                                // Jika itu diri sendiri, beri keterangan "Anda" atau ambil namanya langsung
                                 if (user.getSession() == selfSession) {
                                     return "Anda";
                                 }
@@ -396,6 +411,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
         }
         return null;
     }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         int pttKey = se.lublin.mumla.Settings.getInstance(this).getPushToTalkKey();

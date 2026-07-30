@@ -106,7 +106,7 @@ public class Settings {
     public static final String PREF_CERT_ID = "certificateId";
 
     public static final String PREF_DEFAULT_USERNAME = "defaultUsername";
-    public static final String DEFAULT_DEFAULT_USERNAME = "Mumla_User"; // funny var name
+    public static final String DEFAULT_DEFAULT_USERNAME = ""; // funny var name
 
     public static final String PREF_FORCE_TCP = "forceTcp";
     public static final Boolean DEFAULT_FORCE_TCP = false;

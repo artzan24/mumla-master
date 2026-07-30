@@ -53,6 +53,7 @@
         android:id="@+id/target_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:visibility="visible"
         android:background="?colorPrimaryDark">
 
         <TextView
@@ -85,6 +86,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:padding="12dp"
+        android:layout_marginBottom="20dp"
         android:orientation="vertical">
 
         <ImageButton

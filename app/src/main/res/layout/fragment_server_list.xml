@@ -35,16 +35,16 @@
 
                 <!-- Logo Aplikasi -->
                 <ImageView
-                    android:layout_width="60dp"
-                    android:layout_height="60dp"
-                    android:scaleType="centerInside"
-                    app:srcCompat="@drawable/ic_launcher_foreground" />
+                    android:layout_width="80dp"
+                    android:layout_height="80dp"
+                    android:scaleType="fitCenter"
+                    app:srcCompat="@drawable/tik_polri" />
 
                 <!-- Nama Instansi / Judul Aplikasi -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="6dp"
                     android:fontFamily="sans-serif-medium"
                     android:text="TIK Polda Bali"
                     android:textColor="?android:attr/textColorPrimary"
@@ -66,7 +66,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="28dp"
-                    android:layout_marginBottom="20dp"
+                    android:layout_marginBottom="22dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
@@ -85,7 +85,7 @@
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif-medium"
                         android:text="+ Add Server"
-                        android:textColor="?attr/colorAccent"
+                        android:textColor="#ff2079ab"
                         android:textSize="13sp" />
                 </LinearLayout>
 
@@ -96,7 +96,7 @@
                     android:layout_height="wrap_content"
                     android:numColumns="1"
                     android:horizontalSpacing="0dp"
-                    android:verticalSpacing="4dp"
+                    android:verticalSpacing="2dp"
                     android:scrollbars="none" />
 
                 <!-- Tampilan Kosong (Empty View) -->
