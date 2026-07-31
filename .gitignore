@@ -17,3 +17,8 @@ local.properties
 
 # Java
 *.class
+
+/caches/
+/daemon/
+/native/
+/wrapper/
