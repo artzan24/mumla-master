@@ -32,6 +32,12 @@
         <item name="android:theme">@style/ThemeOverlay.Material3.Dark.ActionBar</item>
     </style>
 
+    <!-- Tema khusus untuk Splash Screen menggunakan warna gelap dari colors.xml -->
+    <style name="Theme.Mumla.Splash" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Menggunakan md_theme_dark_primary (#001b2b) -->
+        <item name="android:windowBackground">@color/md_theme_dark_primary</item>
+    </style>
+
     <style name="App.Widget.ActionMode" parent="Widget.AppCompat.ActionMode">
     </style>
 

@@ -91,13 +91,13 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:padding="12dp"
-        android:layout_marginBottom="20dp"
+        android:layout_marginBottom="10dp"
         android:orientation="vertical">
 
         <ImageButton
             android:id="@+id/pushtotalk"
-            android:layout_width="104dp"
-            android:layout_height="104dp"
+            android:layout_width="90dp"
+            android:layout_height="90dp"
             android:background="@drawable/ptt_button_bg"
             app:srcCompat="@drawable/ic_mic"
             android:tint="#FFFFFF"
