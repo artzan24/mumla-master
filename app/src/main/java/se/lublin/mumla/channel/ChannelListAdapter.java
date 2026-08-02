@@ -231,14 +231,14 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 @Override
                 public void onClick(View v) {
                     ChannelMenu menu = new ChannelMenu(mContext, channel, mService, mDatabase, mFragmentManager);
-                    menu.showPopup(v);
+                    //menu.showPopup(v);
                 }
             });
 
             cvh.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    cvh.mMoreButton.performClick();
+                    //cvh.mMoreButton.performClick();
                     return true;
                 }
             });
@@ -295,8 +295,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             uvh.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    uvh.mMoreButton.performClick();
-                    return true;
+                    //uvh.mMoreButton.performClick();
+                    return false;
                 }
             });
         }
