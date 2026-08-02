@@ -41,43 +41,48 @@
     </LinearLayout>
 
     <!-- ViewPager untuk Daftar Channel -->
-    <androidx.viewpager.widget.ViewPager
+    <se.lublin.mumla.channel.NonSwipeableViewPager
         android:id="@+id/channel_view_pager"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
-    </androidx.viewpager.widget.ViewPager>
+    </se.lublin.mumla.channel.NonSwipeableViewPager>
 
     <!-- Panel Target Suara (Whisper/Shout) -->
-    <FrameLayout
+    <LinearLayout
         android:id="@+id/target_panel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:visibility="visible"
-        android:background="?colorPrimaryDark">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="?colorPrimaryDark"
+        android:visibility="gone"
+        tools:visibility="gone">
 
         <TextView
             android:id="@+id/target_panel_warning"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:text="Shouting to Channel"
-            android:textSize="6pt"
-            android:textColor="?android:textColorPrimaryInverse"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:padding="12dp"
             android:singleLine="true"
-            android:gravity="left|center_vertical"
-            android:textStyle="italic"
-            android:padding="8dp"/>
+            android:text="Shouting to Channel"
+            android:textColor="?android:textColorPrimaryInverse"
+            android:textSize="12sp"
+            android:textStyle="italic" />
 
         <ImageView
             android:id="@+id/target_panel_cancel"
-            android:layout_width="24dp"
-            android:layout_height="match_parent"
-            app:srcCompat="@drawable/ic_action_delete_dark"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="?android:textColorPrimaryInverse"
-            android:layout_gravity="center_vertical|end"
-            android:background="?attr/selectableItemBackgroundBorderless"/>
+            app:srcCompat="@drawable/ic_action_delete_dark" />
 
-    </FrameLayout>
+    </LinearLayout>
 
     <!-- Tombol Push-To-Talk di Bawah -->
     <LinearLayout

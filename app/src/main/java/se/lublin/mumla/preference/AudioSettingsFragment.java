@@ -10,6 +10,7 @@ import android.media.audiofx.AcousticEchoCanceler;
 import android.os.Bundle;
 
 import androidx.preference.ListPreference;
+import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceScreen;
 
@@ -68,6 +69,29 @@ public class AudioSettingsFragment extends MumlaPreferenceFragment {
         }
         pref.setEntries(entries.toArray(new CharSequence[0]));
         pref.setEntryValues(values.toArray(new CharSequence[0]));
+    }
+
+    @Override
+    public void onDisplayPreferenceDialog(Preference preference) {
+        androidx.fragment.app.DialogFragment dialogFragment = null;
+
+        if (preference instanceof KeySelectDialogPreference) {
+            dialogFragment = KeySelectPreferenceDialogFragment.newInstance(preference.getKey());
+        }
+        // Tangani juga SeekBarDialogPreference agar tidak memicu IllegalArgumentException
+        else if (preference instanceof se.lublin.mumla.preference.SeekBarDialogPreference) {
+            // Cari kelas fragment dialog untuk SeekBar yang ada di project Mumla,
+            // biasanya bernama SeekBarPreferenceDialogFragment atau sejenisnya.
+            // Contoh instansiasi:
+            dialogFragment = se.lublin.mumla.preference.SeekBarPreferenceDialogFragment.newInstance(preference.getKey());
+        }
+
+        if (dialogFragment != null) {
+            dialogFragment.setTargetFragment(this, 0);
+            dialogFragment.show(getParentFragmentManager(), "androidx.preference.PreferenceFragment.DIALOG");
+        } else {
+            super.onDisplayPreferenceDialog(preference);
+        }
     }
 
     private static void updateAudioDependents(PreferenceScreen screen, String inputMethod) {

@@ -271,6 +271,9 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         });
         mTargetPanelText = (TextView) view.findViewById(R.id.target_panel_warning);
         configureInput();
+        if (mTargetPanel != null) {
+            mTargetPanel.setVisibility(View.GONE);
+        }
         return view;
     }
 
@@ -371,19 +374,27 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     }
 
     private void configureTargetPanel() {
-        if (getService() == null || !getService().isConnected()) {
-            return;
-        }
-
-        IHumlaSession session = getService().HumlaSession();
-        VoiceTargetMode mode = session.getVoiceTargetMode();
-        if (mode == VoiceTargetMode.WHISPER) {
-            WhisperTarget target = session.getWhisperTarget();
-            mTargetPanel.setVisibility(View.VISIBLE);
-            mTargetPanelText.setText(getString(R.string.shout_target, target.getName()));
-        } else {
+        // PAKSA SEMBUNYIKAN TOTAL: Abaikan semua logika target panel
+        if (mTargetPanel != null) {
             mTargetPanel.setVisibility(View.GONE);
         }
+        return;
+
+    /* --- KODE ASLI DIBAWAH INI DINONAKTIFKAN ---
+    if (getService() == null || !getService().isConnected()) {
+        return;
+    }
+
+    IHumlaSession session = getService().HumlaSession();
+    VoiceTargetMode mode = session.getVoiceTargetMode();
+    if (mode == VoiceTargetMode.WHISPER) {
+        WhisperTarget target = session.getWhisperTarget();
+        mTargetPanel.setVisibility(View.VISIBLE);
+        mTargetPanelText.setText(getString(R.string.shout_target, target.getName()));
+    } else {
+        mTargetPanel.setVisibility(View.GONE);
+    }
+    ------------------------------------------- */
     }
 
     private boolean isShowingPinnedChannels() {

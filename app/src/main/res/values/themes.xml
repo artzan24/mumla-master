@@ -12,6 +12,16 @@
         <!-- This makes the ActionMode background dark, somehow: that style is empty!
          But it is what we want, on both dark/light themes (text color is bright) -->
         <item name="actionModeStyle">@style/App.Widget.ActionMode</item>
+        <item name="toolbarStyle">@style/Widget.App.Toolbar</item>
+    </style>
+
+    <style name="Widget.App.Toolbar" parent="Widget.Material3.Toolbar">
+        <item name="titleTextAppearance">@style/TextAppearance.App.Toolbar.Title</item>
+    </style>
+
+    <!-- Gunakan parent AppCompat agar aman dan tidak error resource not found -->
+    <style name="TextAppearance.App.Toolbar.Title" parent="TextAppearance.AppCompat.Widget.ActionBar.Title">
+        <item name="android:textSize">16sp</item> <!-- Ubah sesuai ukuran yang diinginkan, misal 14sp -->
     </style>
 
     <!-- This is for always have dark themed appbar, used in activity .xmls -->

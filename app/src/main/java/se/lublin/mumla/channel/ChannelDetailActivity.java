@@ -269,13 +269,13 @@ public class ChannelDetailActivity extends AppCompatActivity {
 
     private void updateJoinStateUI() {
         boolean isJoined = isUserJoinedToChannel();
-        boolean isPttEnabled = isJoined && (mChannelId != 0 && mChannelId != 5);
+        boolean isPttEnabled = isJoined && (mChannelId != 0 && mChannelId != 1);
 
         // 1. Update State Tombol Join di Toolbar
         if (mToolbarJoinButton != null) {
             mToolbarJoinButton.setActivated(isJoined);
             mToolbarJoinButton.setSelected(isJoined);
-            mToolbarJoinButton.setEnabled(!isJoined && mChannelId != 0 && mChannelId != 5);
+            mToolbarJoinButton.setEnabled(!isJoined && mChannelId != 0 && mChannelId != 1);
             mToolbarJoinButton.refreshDrawableState();
         }
 
@@ -300,7 +300,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
 
         // 3. Update Status Utama
         if (tvChannelStatus != null) {
-            if (mChannelId == 0 || mChannelId == 5) {
+            if (mChannelId == 0 || mChannelId == 1) {
                 tvChannelStatus.setText("Status: Channel Default Mic Off");
             } else if (!isJoined) {
                 tvChannelStatus.setText("Status: Belum Terhubung");
@@ -311,7 +311,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
 
         // 4. Update Status Channel (Busy / Idle)
         if (tvChannelBusyState != null) {
-            if (isJoined && mChannelId != 0 && mChannelId != 5) {
+            if (isJoined && mChannelId != 0 && mChannelId != 1) {
                 tvChannelBusyState.setVisibility(View.VISIBLE);
                 if (isChannelBusy()) {
                     tvChannelBusyState.setText("Channel Status: Busy");
@@ -339,7 +339,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
     }
 
     private boolean isUserJoinedToChannel() {
-        if (mChannelId == 0 || mChannelId == 5) {
+        if (mChannelId == 0 || mChannelId == 1) {
             return false;
         }
 

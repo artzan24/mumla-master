@@ -1,0 +1,24 @@
+package se.lublin.mumla.channel;
+
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.MotionEvent;
+import androidx.viewpager.widget.ViewPager;
+
+public class NonSwipeableViewPager extends ViewPager {
+    public NonSwipeableViewPager(Context context, AttributeSet attrs) {
+        super(context, attrs);
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+        // Blokir interaksi sentuh untuk mencegah swipe horizontal
+        return false;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        // Blokir touch event agar halaman tidak bergeser saat disentuh
+        return false;
+    }
+}

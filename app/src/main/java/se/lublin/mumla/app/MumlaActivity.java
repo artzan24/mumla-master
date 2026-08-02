@@ -104,6 +104,20 @@ import se.lublin.mumla.util.HumlaServiceProvider;
 import se.lublin.mumla.util.MumlaTrustStore;
 import se.lublin.humla.IHumlaService;
 
+import android.util.Log;
+import android.widget.Toast;
+import com.google.gson.Gson;
+import java.io.IOException;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.FormBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import se.lublin.mumla.model.LoginResponse;
+import se.lublin.mumla.model.SessionManager;
+
 public class MumlaActivity extends AppCompatActivity implements ListView.OnItemClickListener,
         FavouriteServerListFragment.ServerConnectHandler, HumlaServiceProvider, DatabaseProvider,
         SharedPreferences.OnSharedPreferenceChangeListener, DrawerAdapter.DrawerDataProvider,
@@ -566,9 +580,113 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         }
     }
 
-    public void connectToServer(final Server server) {
+    /*public void connectToServer(final Server server) {
         mServerPendingPerm = server;
         connectToServerWithPerm();
+    }*/
+
+    public void connectToServer(final Server server) {
+        final String inputNrp = server.getUsername();
+
+        if (inputNrp == null || inputNrp.trim().isEmpty()) {
+            Toast.makeText(this, "Silakan masukkan NRP pada kolom Username!", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Toast.makeText(this, "Memvalidasi NRP ke server...", Toast.LENGTH_SHORT).show();
+
+        String url = "https://mumble.tekkombali.com/api/login";
+        String apiKey = "RAHASIA_RADIO_24101981"; // Ganti dengan X-API-KEY yang valid di CI4 Anda
+
+        OkHttpClient client = new OkHttpClient();
+
+        RequestBody formBody = new FormBody.Builder()
+                .add("nrp", inputNrp.trim())
+                .build();
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-API-KEY", apiKey) // Menambahkan Header X-API-KEY
+                .post(formBody)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.e("MUMBLE_LOGIN", "Koneksi ke server gagal: " + e.getMessage());
+                runOnUiThread(() -> Toast.makeText(getApplicationContext(), "Gagal terhubung ke server backend!", Toast.LENGTH_SHORT).show());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String responseBodyString = response.body() != null ? response.body().string() : "";
+
+                if (response.isSuccessful()) {
+                    // Jika sukses (200 OK)
+                    Gson gson = new Gson();
+                    LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
+
+                    runOnUiThread(() -> {
+                        if (loginData != null && loginData.isStatus()) {
+                            String realname = loginData.getProfile().getRealname();
+                            String kesatuan = loginData.getProfile().getKesatuan();
+                            String nrpAsli = inputNrp.trim();
+
+                            SessionManager sessionManager = new SessionManager(getApplicationContext());
+                            sessionManager.createLoginSession(loginData.getProfile(), loginData.getAllowed_channels());
+
+                            server.setUsername(nrpAsli);
+                            if (server.isSaved()) {
+                                mDatabase.updateServer(server);
+                            }
+
+                            Toast.makeText(getApplicationContext(), "Selamat datang, " + realname + " (" + kesatuan + ")", Toast.LENGTH_LONG).show();
+
+                            mServerPendingPerm = server;
+                            connectToServerWithPerm();
+
+                        } else {
+                            String pesanError = loginData != null ? loginData.getMessage() : "NRP tidak terdaftar!";
+                            showAccessDeniedDialog(pesanError);
+                        }
+                    });
+                } else {
+                    // Jika error dari server (Misal 401 Unauthorized, 404, dll)
+                    String errorMessage = "Terjadi kesalahan pada server (" + response.code() + ")";
+                    try {
+                        // Parse menggunakan JSONObject bawaan Android agar fleksibel mengambil nested key
+                        org.json.JSONObject jsonObject = new org.json.JSONObject(responseBodyString);
+                        if (jsonObject.has("messages")) {
+                            org.json.JSONObject messagesObj = jsonObject.getJSONObject("messages");
+                            if (messagesObj.has("error")) {
+                                errorMessage = messagesObj.getString("error");
+                            }
+                        } else if (jsonObject.has("message")) {
+                            errorMessage = jsonObject.getString("message");
+                        }
+                    } catch (Exception e) {
+                        // Jika gagal parsing JSON, gunakan isi body apa adanya jika ada
+                        if (!responseBodyString.isEmpty()) {
+                            errorMessage = responseBodyString;
+                        }
+                    }
+
+                    final String finalErrorMessage = errorMessage;
+                    runOnUiThread(() -> {
+                        showAccessDeniedDialog(finalErrorMessage);
+                    });
+                }
+            }
+        });
+    }
+
+    // Helper method untuk menampilkan dialog akses ditolak agar rapi
+    private void showAccessDeniedDialog(String message) {
+        new MaterialAlertDialogBuilder(MumlaActivity.this)
+                .setTitle("Akses Ditolak")
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     public void connectToServerWithPerm() {
@@ -887,5 +1005,63 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 connectToServer(server);
                 break;
         }
+    }
+
+    private void performLogin(String nrpInput) {
+        // Ganti dengan alamat IP server CodeIgniter 4 Anda atau Domain / Localhost (10.0.2.2 untuk Emulator Android Studio)
+        String url = "https://mumble.tekkombali.com/api/login";
+
+        OkHttpClient client = new OkHttpClient();
+
+        RequestBody formBody = new FormBody.Builder()
+                .add("nrp", nrpInput)
+                .build();
+
+        Request request = new Request.Builder()
+                .url(url)
+                .post(formBody)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.e("MUMBLE_LOGIN", "Koneksi ke server gagal: " + e.getMessage());
+                runOnUiThread(() -> Toast.makeText(getApplicationContext(), "Gagal terhubung ke server backend!", Toast.LENGTH_SHORT).show());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful() && response.body() != null) {
+                    String jsonResponse = response.body().string();
+
+                    // Parsing JSON menggunakan Gson ke class LoginResponse.java yang sudah dibuat
+                    Gson gson = new Gson();
+                    LoginResponse loginData = gson.fromJson(jsonResponse, LoginResponse.class);
+
+                    // Jalankan di UI Thread jika ingin memodifikasi tampilan / pindah halaman
+                    runOnUiThread(() -> {
+                        if (loginData != null && loginData.isStatus()) {
+                            String nama = loginData.getProfile().getRealname();
+                            String kesatuan = loginData.getProfile().getKesatuan();
+
+                            // 1. SIMPAN SESI LOGIN & CHANNEL IZIN KE SHAREDPREFERENCES
+                            SessionManager sessionManager = new SessionManager(getApplicationContext());
+                            sessionManager.createLoginSession(loginData.getProfile(), loginData.getAllowed_channels());
+
+                            Toast.makeText(getApplicationContext(), "Login Berhasil: " + nama + " (" + kesatuan + ")", Toast.LENGTH_LONG).show();
+
+                            // 2. LANJUTKAN MASUK KE HALAMAN UTAMA / KONEKSI MUMBLE
+                            // Contoh: Intent intent = new Intent(CurrentActivity.this, MumlaActivity.class);
+                            // startActivity(intent);
+                            // finish(); // Menutup activity login agar tidak bisa ditekan tombol back
+
+                        } else {
+                            String pesanError = loginData != null ? loginData.getMessage() : "NRP tidak dikenali";
+                            Toast.makeText(getApplicationContext(), "Login Ditolak: " + pesanError, Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            }
+        });
     }
 }

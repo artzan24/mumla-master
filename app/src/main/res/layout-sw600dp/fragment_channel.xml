@@ -56,34 +56,35 @@
         <FrameLayout
             android:id="@+id/target_panel"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            tools:visibility="gone">
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="#dadada"
-                android:layout_gravity="top"/>
+                android:layout_gravity="top"
+                android:background="#dadada" />
 
             <TextView
                 android:id="@+id/target_panel_warning"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:text="Shouting to Channel"
-                android:textSize="6pt"
-                android:textColor="?android:textColorPrimary"
-                android:singleLine="true"
                 android:gravity="left|center_vertical"
-                android:textStyle="italic"
-                android:padding="8dp"/>
+                android:padding="8dp"
+                android:singleLine="true"
+                android:text="Shouting to Channel"
+                android:textColor="?android:textColorPrimary"
+                android:textSize="6pt"
+                android:textStyle="italic" />
 
             <ImageView
                 android:id="@+id/target_panel_cancel"
                 android:layout_width="24dp"
                 android:layout_height="match_parent"
-                app:srcCompat="@drawable/ic_action_delete_dark"
-                android:tint="?android:textColorPrimary"
                 android:layout_gravity="center_vertical|end"
-                android:background="?attr/selectableItemBackgroundBorderless"/>
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:tint="?android:textColorPrimary"
+                app:srcCompat="@drawable/ic_action_delete_dark" />
 
         </FrameLayout>
 
