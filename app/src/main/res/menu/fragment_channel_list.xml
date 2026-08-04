@@ -23,7 +23,6 @@
         android:title="@string/search"
         mumla:actionViewClass="androidx.appcompat.widget.SearchView"
         mumla:showAsAction="ifRoom|collapseActionView"
-        mumla:icon="@drawable/ic_action_search"
-        android:visible="false"/>
+        mumla:icon="@drawable/ic_action_search"/>
     <item android:id="@+id/menu_bluetooth" android:title="@string/bluetooth" android:checkable="true" mumla:showAsAction="never"></item>
 </menu>

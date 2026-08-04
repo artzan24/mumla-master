@@ -92,6 +92,7 @@ import se.lublin.mumla.db.DatabaseProvider;
 import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.db.MumlaSQLiteDatabase;
 import se.lublin.mumla.db.PublicServer;
+import se.lublin.mumla.model.Channel;
 import se.lublin.mumla.preference.MumlaCertificateGenerateTask;
 import se.lublin.mumla.preference.SettingsActivity;
 import se.lublin.mumla.servers.FavouriteServerListFragment;
@@ -117,6 +118,8 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import se.lublin.mumla.model.LoginResponse;
 import se.lublin.mumla.model.SessionManager;
+import android.content.Context;
+import android.content.SharedPreferences;
 
 public class MumlaActivity extends AppCompatActivity implements ListView.OnItemClickListener,
         FavouriteServerListFragment.ServerConnectHandler, HumlaServiceProvider, DatabaseProvider,
@@ -634,6 +637,28 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
                             SessionManager sessionManager = new SessionManager(getApplicationContext());
                             sessionManager.createLoginSession(loginData.getProfile(), loginData.getAllowed_channels());
+
+// ---> PERBAIKAN DI SINI <---
+                            try {
+                                List<Channel> channelObjects = loginData.getAllowed_channels();
+                                StringBuilder channelIdsBuilder = new StringBuilder("1"); // Selalu sertakan ID 1 (lobby utama)
+
+                                if (channelObjects != null) {
+                                    for (Channel ch : channelObjects) {
+                                        // Ubah string ID dari ch.getId() menjadi integer
+                                        int channelId = Integer.parseInt(ch.getId());
+                                        if (channelId != 1) { // Hindari duplikat angka 1
+                                            channelIdsBuilder.append(",").append(channelId);
+                                        }
+                                    }
+                                }
+
+                                android.content.SharedPreferences prefs = getApplicationContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                                prefs.edit().putString("allowed_channels", channelIdsBuilder.toString()).apply();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                            // ------------------------------------------------------------------------------------
 
                             server.setUsername(nrpAsli);
                             if (server.isSaved()) {

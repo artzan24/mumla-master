@@ -253,7 +253,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 showPermissionDeniedDialog();
                             }
                             updateJoinStateUI();
-                        }, 500);
+                        }, 1500);
                     }
                 } else {
                     Toast.makeText(this, "Tidak terhubung ke server", Toast.LENGTH_SHORT).show();

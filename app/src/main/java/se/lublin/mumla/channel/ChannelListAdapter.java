@@ -18,6 +18,7 @@
 package se.lublin.mumla.channel;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -341,15 +342,80 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         IHumlaSession session = mService.HumlaSession();
         mNodes.clear();
         try {
+            // CONTOH: Anda bisa mengambil daftar ID channel yang diizinkan untuk user aktif
+            // (Bisa diambil dari database lokal Mumla, SharedPreferences, atau cache lokal Anda)
+            List<Integer> allowedChannelIds = getAllowedChannelIdsForCurrentUser(); // Buat method helper atau ambil datanya
+
             for (int cid : mRootChannels) {
                 IChannel channel = session.getChannel(cid);
                 if (channel != null) {
-                    constructNodes(null, channel, 0, mNodes);
+                    constructNodes(null, channel, 0, mNodes, allowedChannelIds);
                 }
             }
         } catch (IllegalStateException e) {
             Log.d(TAG, "exception in updateChannels: " + e);
         }
+    }
+
+    private void constructNodes(Node parent, IChannel channel, int depth,
+                                List<Node> nodes, List<Integer> allowedIds) {
+
+        // Lewati filter untuk root channel (ID 0)
+        if (channel.getId() != 0) {
+            // Jika channel ID TIDAK ADA di dalam daftar allowedIds, abaikan (jangan masukkan ke node)
+            if (allowedIds != null && !allowedIds.contains(channel.getId())) {
+                return;
+            }
+        }
+
+        Node channelNode;
+        if (channel.getId() == 0) {
+            channelNode = parent;
+        } else {
+            channelNode = new Node(parent, depth, channel);
+            nodes.add(channelNode);
+        }
+
+        Boolean expandSetting = mExpandedChannels.get(channel.getId());
+        if (channel.getId() != 0) {
+            if ((expandSetting == null && channel.getSubchannelUserCount() == 0)
+                    || (expandSetting != null && !expandSetting)) {
+                channelNode.setExpanded(false);
+                return;
+            }
+        }
+
+        for (IChannel subc : channel.getSubchannels()) {
+            int subDepth = (channel.getId() == 0) ? depth : depth + 1;
+            constructNodes(channelNode, subc, subDepth, nodes, allowedIds);
+        }
+    }
+
+    // Buat fungsi helper untuk mengambil daftar ID channel yang berhak diakses user
+    private List<Integer> getAllowedChannelIdsForCurrentUser() {
+        List<Integer> allowed = new ArrayList<>();
+        try {
+            // Membaca string yang disimpan saat login (contoh: "1,2,3")
+            SharedPreferences prefs = mContext.getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            String channelsStr = prefs.getString("allowed_channels", "1");
+
+            if (channelsStr != null && !channelsStr.isEmpty()) {
+                String[] split = channelsStr.split(",");
+                for (String s : split) {
+                    allowed.add(Integer.parseInt(s.trim()));
+                }
+            }
+
+            // Pastikan Channel ID 1 selalu ada
+            if (!allowed.contains(1)) {
+                allowed.add(1);
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error parsing allowed channels: " + e);
+            allowed.add(1);
+        }
+        return allowed;
     }
 
     private Drawable createInitialsDrawable(String text) {
