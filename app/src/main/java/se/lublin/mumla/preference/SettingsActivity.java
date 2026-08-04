@@ -65,6 +65,12 @@ public class SettingsActivity extends AppCompatActivity {
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             setPreferencesFromResource(R.xml.preference_headers, rootKey);
+
+            // Sembunyikan menu Appearance secara programmatis
+            androidx.preference.Preference appearancePref = findPreference("appearance_settings");
+            if (appearancePref != null) {
+                appearancePref.setVisible(false);
+            }
         }
     }
 }

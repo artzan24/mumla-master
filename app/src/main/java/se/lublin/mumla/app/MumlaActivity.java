@@ -17,6 +17,7 @@
 
 package se.lublin.mumla.app;
 
+import static androidx.core.content.ContentProviderCompat.requireContext;
 import static java.util.Objects.requireNonNull;
 
 import android.Manifest;
@@ -183,11 +184,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private final HumlaObserver mObserver = new HumlaObserver() {
         @Override
         public void onConnected() {
-            if (mSettings.shouldStartUpInPinnedMode()) {
-                loadDrawerFragment(DrawerAdapter.ITEM_PINNED_CHANNELS);
-            } else {
-                loadDrawerFragment(DrawerAdapter.ITEM_SERVER);
-            }
+
+            loadDrawerFragment(DrawerAdapter.ITEM_SERVER);
+            // Paksa mode input audio langsung jadi PTT saat terkoneksi
+            Settings settings = Settings.getInstance(MumlaActivity.this);
+            settings.setInputMethod(Settings.ARRAY_INPUT_METHOD_PTT);
 
             mDrawerAdapter.notifyDataSetChanged();
             supportInvalidateOptionsMenu();

@@ -81,6 +81,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
 
     private View mActiveSpeakerPanel;
     private TextView mActiveSpeakerText;
+    private TextView mActiveSpeakerUser;
     private boolean mIsChannelBusy = false;
 
     private HumlaObserver mObserver = new HumlaObserver() {
@@ -124,13 +125,43 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                         case SHOUTING:
                         case WHISPERING:
                             mIsChannelBusy = true;
-                            Log.d(TAG, "DEBUG_PTT: User lain (" + user.getName() + ") sedang bicara. mIsChannelBusy = " + mIsChannelBusy);
-                            final String infoText = user.getName() + " sedang berbicara...";
+                            // Cek apakah user yang berbicara adalah Anda sendiri atau orang lain
+                            String displayName;
+                            if (user.getSession() == selfSession) {
+                                displayName = "Anda";
+                            } else {
+                                displayName = user.getName();
+                            }
+
+                            // 1. Baris pertama (Nama User / Kata "Anda")
+                            final String primaryText = displayName;
+
+                            // 2. Baris kedua (Teks keterangan)
+                            final String secondaryText = "sedang berbicara";
+
+                            // 3. Nama channel untuk di bawah mic
+                            final String channelText = (user.getChannel() != null) ? user.getChannel().getName() : "";
 
                             getActivity().runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    mActiveSpeakerText.setText(infoText);
+                                    // Set nama user/Anda di atas mic (baris utama)
+                                    if (mActiveSpeakerUser != null) {
+                                        mActiveSpeakerUser.setText(primaryText);
+                                    }
+
+                                    // Jika Anda memiliki TextView khusus untuk teks "sedang berbicara", atau
+                                    // jika ingin digabung di satu TextView atas dengan newline (\n):
+                                    if (mActiveSpeakerUser != null) {
+                                        mActiveSpeakerUser.setText(primaryText + "\nsedang berbicara...");
+                                    }
+
+                                    // Set nama channel di bawah mic
+                                    if (mActiveSpeakerText != null) {
+                                        mActiveSpeakerText.setText(channelText);
+                                    }
+
+                                    // Tampilkan kotak modal di tengah
                                     mActiveSpeakerPanel.setVisibility(View.VISIBLE);
                                 }
                             });
@@ -138,7 +169,6 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
 
                         case PASSIVE:
                             mIsChannelBusy = false;
-                            Log.d(TAG, "DEBUG_PTT: User lain selesai bicara. mIsChannelBusy = " + mIsChannelBusy);
                             getActivity().runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
@@ -211,6 +241,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         View view = inflater.inflate(R.layout.fragment_channel, container, false);
         mActiveSpeakerPanel = view.findViewById(R.id.active_speaker_panel);
         mActiveSpeakerText = (TextView) view.findViewById(R.id.active_speaker_text);
+        mActiveSpeakerUser = (TextView) view.findViewById(R.id.active_speaker_user);
 
         mViewPager = (ViewPager) view.findViewById(R.id.channel_view_pager);
 

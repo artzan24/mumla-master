@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<androidx.preference.PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+<androidx.preference.PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
     <Preference app:key="general_settings"
         app:title="@string/general"
         app:fragment="se.lublin.mumla.preference.GeneralSettingsFragment"
@@ -15,6 +16,7 @@
         app:iconSpaceReserved="false" />
     <Preference app:key="appearance_settings"
         app:title="@string/appearance"
+        android:visibility="gone"
         app:fragment="se.lublin.mumla.preference.AppearanceSettingsFragment"
         app:iconSpaceReserved="false" />
     <Preference app:key="about_settings"
