@@ -22,13 +22,27 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/channelUsers"
+    <RelativeLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:divider="@android:color/transparent"
-        android:dividerHeight="0dp"
-        android:fastScrollEnabled="true"
-        android:choiceMode="singleChoice"/>
+        android:layout_height="match_parent">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/channelUsers"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="vertical"/>
+
+        <!-- TextView untuk pesan "Tidak ada" (Default disembunyikan/GONE) -->
+        <TextView
+            android:id="@+id/empty_search_view"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="Tidak ada channel ditemukan"
+            android:textColor="@android:color/darker_gray"
+            android:textSize="15sp"
+            android:visibility="gone" />
+
+    </RelativeLayout>
 
 </LinearLayout>

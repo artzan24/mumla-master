@@ -60,7 +60,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 
 /**
  * Created by andrew on 31/07/13.
@@ -77,6 +76,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     private MumlaDatabase mDatabase;
     private List<Integer> mRootChannels;
     private List<Node> mNodes;
+    private List<Node> mFilteredNodes; // <--- List untuk menampung hasil filter pencarian
     /**
      * A mapping of user-set channel expansions.
      * If a key is not mapped, default to hiding empty channels.
@@ -107,8 +107,49 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
         // Construct channel tree
         mNodes = new LinkedList<Node>();
+        mFilteredNodes = new LinkedList<Node>(); // <--- Inisialisasi mFilteredNodes
         mExpandedChannels = new HashMap<Integer, Boolean>();
         updateChannels();
+    }
+
+    /**
+     * FUNGSI FILTER PENCARIAN REAL-TIME
+     */
+    public void filter(String text, TextView emptyView) {
+        if (mFilteredNodes == null) {
+            mFilteredNodes = new ArrayList<>();
+        }
+        mFilteredNodes.clear();
+
+        text = text != null ? text.toLowerCase().trim() : "";
+
+        if (text.isEmpty()) {
+            if (mNodes != null) {
+                mFilteredNodes.addAll(mNodes);
+            }
+        } else {
+            if (mNodes != null) {
+                for (Node node : mNodes) {
+                    String nodeName = "";
+                    if (node.isChannel() && node.getChannel().getName() != null) {
+                        nodeName = node.getChannel().getName();
+                    } else if (node.isUser() && node.getUser().getName() != null) {
+                        nodeName = node.getUser().getName();
+                    }
+
+                    if (nodeName.toLowerCase().contains(text)) {
+                        mFilteredNodes.add(node);
+                    }
+                }
+            }
+        }
+
+        notifyDataSetChanged();
+
+        // Atur visibilitas teks "Tidak ada"
+        if (emptyView != null) {
+            emptyView.setVisibility(mFilteredNodes.isEmpty() ? View.VISIBLE : View.GONE);
+        }
     }
 
     @Override
@@ -126,7 +167,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     @Override
     public void onBindViewHolder(RecyclerView.ViewHolder viewHolder, int position) {
-        final Node node = mNodes.get(position);
+        final Node node = mFilteredNodes.get(position); // <--- Menggunakan mFilteredNodes
         if (node.isChannel()) {
             final IChannel channel = node.getChannel();
             final ChannelViewHolder cvh = (ChannelViewHolder) viewHolder;
@@ -134,11 +175,10 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 android.content.Intent intent = new android.content.Intent(mContext, ChannelDetailActivity.class);
                 intent.putExtra("channel_id", channel.getId());
                 intent.putExtra("channel_name", channel.getName());
-                intent.putExtra("channel_description", channel.getDescription()); // <--- Tambahkan baris ini
+                intent.putExtra("channel_description", channel.getDescription());
                 mContext.startActivity(intent);
             });
 
-            // Mengambil 2 huruf pertama dari nama channel untuk inisial
             String channelName = channel.getName();
             String initials = "";
             if (channelName != null && !channelName.isEmpty()) {
@@ -181,18 +221,16 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             }
             cvh.mChannelName.setTypeface(null, nameTypeface);
 
-            // Menghitung jumlah user aktif di dalam channel
             int userCount = channel.getSubchannelUserCount();
             if (cvh.mChannelUserCount != null) {
                 if (userCount > 0) {
                     cvh.mChannelUserCount.setVisibility(View.VISIBLE);
                     cvh.mChannelUserCount.setText(userCount + " users active");
                 } else {
-                    cvh.mChannelUserCount.setVisibility(View.GONE); // Sembunyikan jika kosong
+                    cvh.mChannelUserCount.setVisibility(View.GONE);
                 }
             }
 
-            // 3. ATUR STATUS TOMBOL JOIN DI SINI:
             boolean isJoined = false;
             if (mService != null && mService.isConnected()) {
                 try {
@@ -208,10 +246,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 }
             }
             cvh.mJoinButton.setActivated(isJoined);
-            // Mengaktifkan state pada baris channel agar background selector otomatis berubah
             cvh.itemView.setActivated(isJoined);
 
-            // Ratakan margin agar semua channel sejajar rapi ke kiri
             DisplayMetrics metrics = mContext.getResources().getDisplayMetrics();
             int zeroPadding = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 12, metrics);
             cvh.mChannelHolder.setPadding(zeroPadding,
@@ -232,14 +268,12 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 @Override
                 public void onClick(View v) {
                     ChannelMenu menu = new ChannelMenu(mContext, channel, mService, mDatabase, mFragmentManager);
-                    //menu.showPopup(v);
                 }
             });
 
             cvh.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    //cvh.mMoreButton.performClick();
                     return true;
                 }
             });
@@ -258,7 +292,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             uvh.mUserName.setText(user.getName());
 
             final int typefaceStyle;
-
             int selfSession = -1;
             try {
                 if (mService != null) {
@@ -296,7 +329,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
             uvh.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
-                    //uvh.mMoreButton.performClick();
                     return false;
                 }
             });
@@ -305,12 +337,12 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     @Override
     public int getItemCount() {
-        return mNodes.size();
+        return mFilteredNodes.size(); // <--- Menggunakan mFilteredNodes
     }
 
     @Override
     public int getItemViewType(int position) {
-        Node node = mNodes.get(position);
+        Node node = mFilteredNodes.get(position); // <--- Menggunakan mFilteredNodes
         if (node.isChannel()) {
             return R.layout.channel_row;
         } else if (node.isUser()) {
@@ -323,17 +355,13 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     @Override
     public long getItemId(int position) {
         try {
-            return mNodes.get(position).getId();
+            return mFilteredNodes.get(position).getId(); // <--- Menggunakan mFilteredNodes
         } catch (RemoteException e) {
             e.printStackTrace();
         }
         return -1;
     }
 
-    /**
-     * Updates the channel tree model.
-     * To be used after any channel tree modifications.
-     */
     public void updateChannels() {
         if (mService == null || !mService.isConnected()) {
             return;
@@ -342,9 +370,7 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         IHumlaSession session = mService.HumlaSession();
         mNodes.clear();
         try {
-            // CONTOH: Anda bisa mengambil daftar ID channel yang diizinkan untuk user aktif
-            // (Bisa diambil dari database lokal Mumla, SharedPreferences, atau cache lokal Anda)
-            List<Integer> allowedChannelIds = getAllowedChannelIdsForCurrentUser(); // Buat method helper atau ambil datanya
+            List<Integer> allowedChannelIds = getAllowedChannelIdsForCurrentUser();
 
             for (int cid : mRootChannels) {
                 IChannel channel = session.getChannel(cid);
@@ -355,14 +381,20 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         } catch (IllegalStateException e) {
             Log.d(TAG, "exception in updateChannels: " + e);
         }
+
+        // Sinkronkan ke mFilteredNodes setelah data asli diperbarui
+        if (mFilteredNodes == null) {
+            mFilteredNodes = new ArrayList<>();
+        }
+        mFilteredNodes.clear();
+        mFilteredNodes.addAll(mNodes);
+        notifyDataSetChanged();
     }
 
     private void constructNodes(Node parent, IChannel channel, int depth,
                                 List<Node> nodes, List<Integer> allowedIds) {
 
-        // Lewati filter untuk root channel (ID 0)
         if (channel.getId() != 0) {
-            // Jika channel ID TIDAK ADA di dalam daftar allowedIds, abaikan (jangan masukkan ke node)
             if (allowedIds != null && !allowedIds.contains(channel.getId())) {
                 return;
             }
@@ -391,11 +423,9 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
     }
 
-    // Buat fungsi helper untuk mengambil daftar ID channel yang berhak diakses user
     private List<Integer> getAllowedChannelIdsForCurrentUser() {
         List<Integer> allowed = new ArrayList<>();
         try {
-            // Membaca string yang disimpan saat login (contoh: "1,2,3")
             SharedPreferences prefs = mContext.getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
             String channelsStr = prefs.getString("allowed_channels", "1");
 
@@ -406,7 +436,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 }
             }
 
-            // Pastikan Channel ID 1 selalu ada
             if (!allowed.contains(1)) {
                 allowed.add(1);
             }
@@ -418,54 +447,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         return allowed;
     }
 
-    private Drawable createInitialsDrawable(String text) {
-        if (text == null || text.isEmpty()) {
-            text = "?";
-        } else {
-            String[] words = text.trim().split("\\s+");
-            if (words.length >= 2) {
-                text = (words[0].substring(0, Math.min(words[0].length(), 1)) +
-                        words[1].substring(0, Math.min(words[1].length(), 1))).toUpperCase();
-            } else if (text.length() >= 2) {
-                text = text.substring(0, 2).toUpperCase();
-            } else {
-                text = text.toUpperCase();
-            }
-        }
-
-        int width = 96;
-        int height = 96;
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-
-        // Latar belakang lingkaran (warna abu-abu gelap ala Zello)
-        Paint bgPaint = new Paint();
-        bgPaint.setAntiAlias(true);
-        bgPaint.setColor(Color.parseColor("#37474F"));
-        canvas.drawCircle(width / 2f, height / 2f, width / 2f, bgPaint);
-
-        // Pengaturan teks di dalam lingkaran
-        Paint textPaint = new Paint();
-        textPaint.setAntiAlias(true);
-        textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(38f);
-        textPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-        textPaint.setTextAlign(Paint.Align.CENTER);
-
-        // Posisi vertikal teks agar pas di tengah
-        Paint.FontMetrics fontMetrics = textPaint.getFontMetrics();
-        float y = (height / 2f) - ((fontMetrics.descent + fontMetrics.ascent) / 2f);
-
-        canvas.drawText(text, width / 2f, y, textPaint);
-
-        return new BitmapDrawable(mContext.getResources(), bitmap);
-    }
-
-    /**
-     * Update a user's state icon
-     * @param user The user to update.
-     * @param view The view containing this adapter.
-     */
     public void updateUserStates(IUser user, RecyclerView view) {
         long itemId = user.getSession() | USER_ID_MASK;
         UserViewHolder uvh = (UserViewHolder) view.findViewHolderForItemId(itemId);
@@ -493,27 +474,22 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         } else if (user.getTalkState() == TalkState.TALKING
                 || user.getTalkState() == TalkState.SHOUTING
                 || user.getTalkState() == TalkState.WHISPERING) {
-            // TODO whisper and shouting?
             return resources.getDrawable(R.drawable.outline_circle_talking_on);
         } else {
-            // Passive drawables
             if (user.getTexture() != null) {
-                // FIXME: cache bitmaps
                 Bitmap bitmap = BitmapFactory.decodeByteArray(user.getTexture(), 0, user.getTexture().length);
-                // yes, decoding can fail
                 if (bitmap != null) {
                     return new CircleDrawable(mContext.getResources(), bitmap);
                 }
             }
         }
-        // "default" symbol, used also if bitmap decoding fails
         return resources.getDrawable(R.drawable.outline_circle_talking_off);
     }
 
     public int getUserPosition(int session) {
         long itemId = session | USER_ID_MASK;
-        for (int i = 0; i < mNodes.size(); i++) {
-            Node node = mNodes.get(i);
+        for (int i = 0; i < mFilteredNodes.size(); i++) {
+            Node node = mFilteredNodes.get(i);
             try {
                 if (node.getId() == itemId) {
                     return i;
@@ -527,8 +503,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
     public int getChannelPosition(int channelId) {
         long itemId = channelId | CHANNEL_ID_MASK;
-        for (int i = 0; i < mNodes.size(); i++) {
-            Node node = mNodes.get(i);
+        for (int i = 0; i < mFilteredNodes.size(); i++) {
+            Node node = mFilteredNodes.get(i);
             try {
                 if (node.getId() == itemId) {
                     return i;
@@ -548,56 +524,11 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         mChannelClickListener = listener;
     }
 
-    /**
-     * Sets whether to show the channel user count in a channel row.
-     */
     public void setShowChannelUserCount(boolean showUserCount) {
         mShowChannelUserCount = showUserCount;
         notifyDataSetChanged();
     }
 
-    /**
-     * Recursively creates a list of {@link Node}s representing the channel hierarchy.
-     * @param parent The parent node to propagate under.
-     * @param channel The parent channel.
-     * @param depth The current depth of the subtree.
-     * @param nodes An accumulator to store generated nodes into.
-     */
-    private void constructNodes(Node parent, IChannel channel, int depth,
-                                List<Node> nodes) {
-
-        Node channelNode;
-        int currentDepth = depth;
-
-        if (channel.getId() == 0) {
-            channelNode = parent;
-        } else {
-            channelNode = new Node(parent, depth, channel);
-            nodes.add(channelNode);
-        }
-
-        Boolean expandSetting = mExpandedChannels.get(channel.getId());
-        if (channel.getId() != 0) {
-            if ((expandSetting == null && channel.getSubchannelUserCount() == 0)
-                    || (expandSetting != null && !expandSetting)) {
-                channelNode.setExpanded(false);
-                return;
-            }
-        }
-
-        // PERHATIAN: Baris "for (IUser user : channel.getUsers())" dihapus/dikomentari
-        // agar user tidak tampil sebagai baris list di bawah channel.
-
-        for (IChannel subc : channel.getSubchannels()) {
-            int subDepth = (channel.getId() == 0) ? depth : depth + 1;
-            constructNodes(channelNode, subc, subDepth, nodes);
-        }
-    }
-
-    /**
-     * Changes the service backing the adapter. Updates the list as well.
-     * @param service The new service to retrieve channels from.
-     */
     public void setService(IHumlaService service) {
         mService = service;
         if (service.getConnectionState() == HumlaService.ConnectionState.CONNECTED) {
@@ -610,7 +541,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     public void onLocalUserStateUpdated(final IUser user) {
         notifyDataSetChanged();
 
-        // Add or remove registered user from local mute history
         final Server server = mService.getTargetServer();
 
         if (user.getUserId() >= 0 && server.isSaved()) {
@@ -635,7 +565,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
     private static class UserViewHolder extends RecyclerView.ViewHolder {
         public LinearLayout mUserHolder;
         public TextView mUserName;
-//        public ImageView mUserAvatar;
         public ImageView mUserTalkHighlight;
         public ImageView mMoreButton;
 
@@ -667,10 +596,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
     }
 
-    /**
-     * An arbitrary node in the channel-user hierarchy.
-     * Can be either a channel or user.
-     */
     private static class Node {
         private Node mParent;
         private IChannel mChannel;
@@ -712,7 +637,6 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         }
 
         public Long getId() throws RemoteException {
-            // Apply flags to differentiate integer-length identifiers
             if (isChannel()) {
                 return CHANNEL_ID_MASK | mChannel.getId();
             } else if (isUser()) {

@@ -39,6 +39,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -64,7 +65,7 @@ import se.lublin.mumla.util.HumlaServiceFragment;
 
 public class ChannelListFragment extends HumlaServiceFragment implements OnChannelClickListener, OnUserClickListener, SharedPreferences.OnSharedPreferenceChangeListener {
     private static final String TAG = ChannelListFragment.class.getName();
-
+    private TextView mEmptyView;
     private IHumlaObserver mServiceObserver = new HumlaObserver() {
         @Override
         public void onDisconnected(HumlaException e) {
@@ -187,6 +188,9 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         mChannelView = (RecyclerView) view.findViewById(R.id.channelUsers);
         mChannelView.setLayoutManager(new LinearLayoutManager(getActivity()));
 
+        // Tangkap TextView "Tidak ada" dari layout
+        mEmptyView = (TextView) view.findViewById(R.id.empty_search_view);
+
         return view;
     }
 
@@ -272,7 +276,7 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.fragment_channel_list, menu);
 
-        MenuItem searchItem = menu.findItem(R.id.menu_search);
+        /*MenuItem searchItem = menu.findItem(R.id.menu_search);
         SearchManager searchManager = (SearchManager) getActivity().getSystemService(Context.SEARCH_SERVICE);
 
         final SearchView searchView = (SearchView)MenuItemCompat.getActionView(searchItem);
@@ -307,7 +311,48 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
                 }
                 return false;
             }
-        });
+        });*/
+        MenuItem searchItem = menu.findItem(R.id.menu_search);
+
+        // Gunakan androidx.appcompat.widget.SearchView sesuai library AppCompat
+        final SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchItem);
+
+        if (searchView != null) {
+            searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+                @Override
+                public boolean onQueryTextSubmit(String query) {
+                    if (mChannelListAdapter != null) {
+                        mChannelListAdapter.filter(query, mEmptyView);
+                    }
+                    return true;
+                }
+
+                @Override
+                public boolean onQueryTextChange(String newText) {
+                    // Filter berjalan otomatis secara real-time setiap huruf diketik
+                    if (mChannelListAdapter != null) {
+                        mChannelListAdapter.filter(newText, mEmptyView);
+                    }
+                    return true;
+                }
+            });
+
+            // Opsional: Reset filter saat kotak pencarian ditutup (klik tombol close/back)
+            searchItem.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
+                @Override
+                public boolean onMenuItemActionExpand(MenuItem item) {
+                    return true;
+                }
+
+                @Override
+                public boolean onMenuItemActionCollapse(MenuItem item) {
+                    if (mChannelListAdapter != null) {
+                        mChannelListAdapter.filter("", mEmptyView);
+                    }
+                    return true;
+                }
+            });
+        }
     }
 
     @Override
