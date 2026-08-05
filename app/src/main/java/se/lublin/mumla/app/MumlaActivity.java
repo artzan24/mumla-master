@@ -26,6 +26,8 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationManager;
 import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.net.Uri;
@@ -93,6 +95,7 @@ import se.lublin.mumla.db.DatabaseProvider;
 import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.db.MumlaSQLiteDatabase;
 import se.lublin.mumla.db.PublicServer;
+import se.lublin.mumla.helper.RealtimeStatusSync;
 import se.lublin.mumla.model.Channel;
 import se.lublin.mumla.preference.MumlaCertificateGenerateTask;
 import se.lublin.mumla.preference.SettingsActivity;
@@ -121,6 +124,8 @@ import se.lublin.mumla.model.LoginResponse;
 import se.lublin.mumla.model.SessionManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 
 public class MumlaActivity extends AppCompatActivity implements ListView.OnItemClickListener,
         FavouriteServerListFragment.ServerConnectHandler, HumlaServiceProvider, DatabaseProvider,
@@ -294,6 +299,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mDatabase.open();
 
         mDrawerLayout = findViewById(R.id.drawer_layout);
+
         ListView mDrawerList = findViewById(R.id.left_drawer);
 
         View headerView = getLayoutInflater().inflate(R.layout.list_drawer_headerlogo, mDrawerList, false);
@@ -361,16 +367,102 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         //mDrawerToggle.syncState();
     }
 
+    // Handler untuk sinkronisasi status realtime ke server
+    /*private final Handler mSyncHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                // Cukup cek apakah mService tidak null dan terhubung
+                if (mService != null && mService.isConnected()) {
+                    String currentUsername = "";
+                    String activeChannelName = "Lobby Utama";
+
+                    // 1. Ambil Username/NRP dari SharedPreferences aplikasi Mumla
+                    SharedPreferences prefs = getSharedPreferences("mumla_preferences", Context.MODE_PRIVATE);
+                    currentUsername = prefs.getString("username", "");
+                    if (currentUsername.isEmpty()) {
+                        currentUsername = prefs.getString("pref_username", "");
+                    }
+
+                    // 2. Fallback jika SharedPreferences kosong (untuk pengujian)
+                    if (currentUsername == null || currentUsername.isEmpty()) {
+                        currentUsername = "87010203";
+                    }
+
+                    // 3. Ambil nama channel menggunakan method getActiveChannelName() yang sudah ada di MumlaActivity
+                    try {
+                        String detectedChannel = getActiveChannelName();
+                        if (detectedChannel != null && !detectedChannel.isEmpty()) {
+                            activeChannelName = detectedChannel;
+                        }
+                    } catch (Exception ignored) {}
+
+                    // 4. Kirim data ke server
+                    if (!currentUsername.isEmpty()) {
+                        Log.d("MumlaSync", "Mengirim Status -> User: " + currentUsername + " | Channel: " + activeChannelName);
+                        RealtimeStatusSync.sendStatus(MumlaActivity.this, currentUsername, "online", activeChannelName);
+                    } else {
+                        Log.w("MumlaSync", "Username/NRP masih kosong.");
+                    }
+                }
+            } catch (Exception e) {
+                Log.e("MumlaSync", "Error sync runnable: " + e.getMessage());
+            }
+
+            // Kirim ulang setiap 1 menit (60000 ms)
+            mSyncHandler.postDelayed(this, 30000);
+        }
+    };*/
+
+    /*private String getActiveChannelName() {
+        try {
+            if (mService != null && mService.isConnected()) {
+                IHumlaSession session = mService.HumlaSession();
+                if (session != null && session.getSessionChannel() != null) {
+                    return session.getSessionChannel().getName();
+                }
+            }
+        } catch (Exception e) {
+            Log.e("MumlaActivity", "Error get active channel: " + e.getMessage());
+        }
+        return null;
+    }*/
+
     @Override
     protected void onResume() {
         super.onResume();
         Intent connectIntent = new Intent(this, MumlaService.class);
         bindService(connectIntent, mConnection, 0);
+        //mSyncHandler.post(mSyncRunnable);
+        if (mDrawerLayout != null) {
+            mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+
+        // Hentikan routine sinkronisasi realtime saat aplikasi di-pause/ditinggalkan
+        /*if (mSyncHandler != null) {
+            mSyncHandler.removeCallbacks(mSyncRunnable);
+        }
+
+        // Laporkan status offline ke server saat aplikasi ditutup/ditinggalkan
+        try {
+            String currentUsername = "";
+            SharedPreferences prefs = getSharedPreferences("mumla_preferences", Context.MODE_PRIVATE);
+            currentUsername = prefs.getString("username", "");
+
+            if (!currentUsername.isEmpty()) {
+                // Kirim 4 parameter lengkap: Context, username, status, keterangan
+                RealtimeStatusSync.sendStatus(this, currentUsername, "offline", "Aplikasi Ditutup");
+            }
+        } catch (Exception e) {
+            Log.e("MumlaSync", "Error send offline status: " + e.getMessage());
+        }*/
+
         if (mErrorDialog != null)
             mErrorDialog.dismiss();
         if (mConnectingDialog != null)
@@ -385,6 +477,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         }
         unbindService(mConnection);
     }
+
 
     @Override
     protected void onDestroy() {

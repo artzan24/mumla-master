@@ -26,6 +26,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.speech.tts.TextToSpeech;
@@ -91,6 +92,8 @@ public class MumlaService extends HumlaService implements
     private List<IChatMessage> mMessageLog;
     private boolean mSuppressNotifications;
 
+    private String mLastKnownUsername = "Unknown";
+
     private TextToSpeech mTTS;
     private TextToSpeech.OnInitListener mTTSInitListener = new TextToSpeech.OnInitListener() {
         @Override
@@ -141,6 +144,12 @@ public class MumlaService extends HumlaService implements
                 mNotification.setCustomContentText(getString(R.string.connected) + tor);
                 mNotification.setActionsShown(true);
                 mNotification.show();
+            }
+
+            if (mBackgroundSyncHandler != null && mBackgroundSyncRunnable != null) {
+                mBackgroundSyncHandler.removeCallbacks(mBackgroundSyncRunnable);
+                mBackgroundSyncHandler.post(mBackgroundSyncRunnable);
+                Log.d(TAG, "🚀 Background sync dipicu dari onConnected()");
             }
         }
 
@@ -349,6 +358,51 @@ public class MumlaService extends HumlaService implements
         super.onDestroy();
     }
 
+    // Handler untuk background sync status, lokasi, dan IP publik secara berkala
+    private final Handler mBackgroundSyncHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable mBackgroundSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                if (isConnectionEstablished()) {
+
+                    // AMBIL USERNAME/NRP LANGSUNG DARI SESI MUMBLE YANG AKTIF
+                    String currentUsername = "Unknown";
+                    String activeChannelName = "Lobby Utama";
+
+                    try {
+                        if (getSessionUser() != null) {
+                            currentUsername = getSessionUser().getName(); // Mengambil nama/NRP asli dari server Mumble
+                            if (getSessionUser().getChannel() != null) {
+                                activeChannelName = getSessionUser().getChannel().getName();
+                            }
+                        }
+                    } catch (Exception ignored) {}
+
+                    // SIMPAN KE CACHE JIKA VALID (Bukan Unknown)
+                    if (currentUsername != null && !currentUsername.equals("Unknown") && !currentUsername.isEmpty()) {
+                        mLastKnownUsername = currentUsername;
+                    }
+
+                    // Kirim data ke database CI4 secara real-time
+                    se.lublin.mumla.helper.RealtimeStatusSync.sendStatus(
+                            MumlaService.this,
+                            currentUsername,
+                            "online",
+                            activeChannelName
+                    );
+
+                    Log.d(TAG, "✅ SYNC BERHASIL | NRP: [" + currentUsername + "] | Channel: [" + activeChannelName + "]");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Error sync: " + e.getMessage());
+            }
+
+            // Loop setiap 30 detik
+            mBackgroundSyncHandler.postDelayed(this, 60000);
+        }
+    };
+
     @Override
     public void onConnectionSynchronized() {
         // TODO? We seem to be getting a RuntimeException here, from the call
@@ -386,6 +440,9 @@ public class MumlaService extends HumlaService implements
         if (mSettings.isHandsetMode()) {
             setProximitySensorOn(true);
         }
+        // === MULAI BACKGROUND SYNC SAAT TERHUBUNG ===
+        mBackgroundSyncHandler.removeCallbacks(mBackgroundSyncRunnable);
+        mBackgroundSyncHandler.post(mBackgroundSyncRunnable);
     }
 
     @Override
@@ -394,6 +451,14 @@ public class MumlaService extends HumlaService implements
         try {
             unregisterReceiver(mTalkReceiver);
         } catch (IllegalArgumentException iae) {
+        }
+
+        //KIRIM STATUS OFFLINE SEBELUM BERHENTI
+        sendOfflineStatus();
+
+        //HENTIKAN BACKGROUND SYNC SAAT DISCONNECT
+        if (mBackgroundSyncHandler != null) {
+            mBackgroundSyncHandler.removeCallbacks(mBackgroundSyncRunnable);
         }
 
         // Remove overlay if present.
@@ -405,6 +470,32 @@ public class MumlaService extends HumlaService implements
 
         clearMessageLog();
         mMessageNotification.dismiss();
+    }
+
+    // Buat helper method untuk kirim status offline
+    private void sendOfflineStatus() {
+        try {
+            // Cek apakah cache kosong, jika kosong coba ambil sekilas dari session (sebagai cadangan)
+            if (mLastKnownUsername == null || mLastKnownUsername.equals("Unknown")) {
+                try {
+                    if (getSessionUser() != null) {
+                        mLastKnownUsername = getSessionUser().getName();
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Kirim status offline ke database CI4 membawa NRP terakhir yang tersimpan
+            se.lublin.mumla.helper.RealtimeStatusSync.sendStatus(
+                    this,
+                    mLastKnownUsername,
+                    "offline",
+                    "-"
+            );
+
+            Log.d(TAG, "🔴 Status offline terkirim untuk NRP: " + mLastKnownUsername);
+        } catch (Exception e) {
+            Log.e(TAG, "Gagal kirim status offline: " + e.getMessage());
+        }
     }
 
     /**

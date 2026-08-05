@@ -401,6 +401,40 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         if (service.getConnectionState() == HumlaService.ConnectionState.CONNECTED) {
             configureTargetPanel();
             configureInput();
+
+            checkAndAutoRegisterUser();
+        }
+    }
+
+    private void checkAndAutoRegisterUser() {
+        if (getService() == null || !getService().isConnected()) {
+            return;
+        }
+
+        // Gunakan SharedPreferences agar auto-register hanya berjalan SEKALI saja
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
+        boolean isAutoRegistered = prefs.getBoolean("is_auto_registered", false);
+
+        if (!isAutoRegistered) {
+            try {
+                IUser selfUser = getService().HumlaSession().getSessionUser();
+                if (selfUser != null) {
+                    // Cek kondisi apakah user belum terdaftar (userId < 0) dan memiliki hash valid
+                    boolean canRegister = selfUser.getUserId() < 0 &&
+                            (selfUser.getHash() != null && !selfUser.getHash().isEmpty());
+
+                    if (canRegister) {
+                        // Panggil perintah register user ke server
+                        getService().HumlaSession().registerUser(selfUser.getSession());
+
+                        // Simpan status agar tidak ter-trigger berulang kali
+                        prefs.edit().putBoolean("is_auto_registered", true).apply();
+                        Log.d(TAG, "Auto register sent for user session: " + selfUser.getSession());
+                    }
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "exception in checkAndAutoRegisterUser: " + e);
+            }
         }
     }
 
