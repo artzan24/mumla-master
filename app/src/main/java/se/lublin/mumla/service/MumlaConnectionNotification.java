@@ -150,7 +150,7 @@ public class MumlaConnectionNotification {
             builder.setContentTitle(mService.getString(R.string.app_name));
         }
         builder.setContentText(mCustomContentText);
-        builder.setSmallIcon(R.drawable.ic_stat_notify);
+        builder.setSmallIcon(R.drawable.logo_tik);
         builder.setPriority(NotificationCompat.PRIORITY_DEFAULT);
         builder.setCategory(NotificationCompat.CATEGORY_CALL);
         builder.setShowWhen(false);

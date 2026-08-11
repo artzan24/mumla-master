@@ -252,13 +252,38 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 1. Jika savedInstanceState != null, artinya Activity ini DI-RESTART oleh sistem
+        // (misalnya setelah pengguna mengubah izin/permission di Settings).
+        // Maka paksa kembalikan ke SplashActivity!
+        boolean isRestartedBySystem = (savedInstanceState != null);
+        boolean isFromSplash = getIntent().getBooleanExtra("from_splash", false);
+        boolean isActionView = Intent.ACTION_VIEW.equals(getIntent().getAction());
+
+        if ((isRestartedBySystem || !isFromSplash) && !isActionView) {
+            // Hapus flag intent agar tidak berulang
+            getIntent().removeExtra("from_splash");
+
+            Intent intent = new Intent(this, SplashActivity.class);
+            // Flag ini akan membersihkan stack Activity agar benar-benar mulai dari awal
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+            return; // Hentikan eksekusi onCreate
+        }
+
         androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
                 androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
         );
-        mSettings = Settings.getInstance(this);
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        if (getSupportFragmentManager().findFragmentById(R.id.content_frame) == null) {
+            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+        }
+
+        mSettings = Settings.getInstance(this);
+        checkInitialPermissions();
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -361,73 +386,41 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         }
     }
 
+    private void checkInitialPermissions() {
+        List<String> listPermissionsNeeded = new ArrayList<>();
+
+        // 1. Cek Record Audio (Opsional jika ingin diminta di awal, atau biarkan saat connect)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            listPermissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
+        }
+
+        // 2. Cek Lokasi
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            listPermissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+
+        // 3. Cek Notifikasi (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                listPermissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+
+        // Jika ada izin yang belum diberikan, langsung tampilkan dialog pop-up
+        if (!listPermissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(
+                    this,
+                    listPermissionsNeeded.toArray(new String[0]),
+                    200 // Kode Request Gabungan
+            );
+        }
+    }
+
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         //mDrawerToggle.syncState();
     }
-
-    // Handler untuk sinkronisasi status realtime ke server
-    /*private final Handler mSyncHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mSyncRunnable = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                // Cukup cek apakah mService tidak null dan terhubung
-                if (mService != null && mService.isConnected()) {
-                    String currentUsername = "";
-                    String activeChannelName = "Lobby Utama";
-
-                    // 1. Ambil Username/NRP dari SharedPreferences aplikasi Mumla
-                    SharedPreferences prefs = getSharedPreferences("mumla_preferences", Context.MODE_PRIVATE);
-                    currentUsername = prefs.getString("username", "");
-                    if (currentUsername.isEmpty()) {
-                        currentUsername = prefs.getString("pref_username", "");
-                    }
-
-                    // 2. Fallback jika SharedPreferences kosong (untuk pengujian)
-                    if (currentUsername == null || currentUsername.isEmpty()) {
-                        currentUsername = "87010203";
-                    }
-
-                    // 3. Ambil nama channel menggunakan method getActiveChannelName() yang sudah ada di MumlaActivity
-                    try {
-                        String detectedChannel = getActiveChannelName();
-                        if (detectedChannel != null && !detectedChannel.isEmpty()) {
-                            activeChannelName = detectedChannel;
-                        }
-                    } catch (Exception ignored) {}
-
-                    // 4. Kirim data ke server
-                    if (!currentUsername.isEmpty()) {
-                        Log.d("MumlaSync", "Mengirim Status -> User: " + currentUsername + " | Channel: " + activeChannelName);
-                        RealtimeStatusSync.sendStatus(MumlaActivity.this, currentUsername, "online", activeChannelName);
-                    } else {
-                        Log.w("MumlaSync", "Username/NRP masih kosong.");
-                    }
-                }
-            } catch (Exception e) {
-                Log.e("MumlaSync", "Error sync runnable: " + e.getMessage());
-            }
-
-            // Kirim ulang setiap 1 menit (60000 ms)
-            mSyncHandler.postDelayed(this, 30000);
-        }
-    };*/
-
-    /*private String getActiveChannelName() {
-        try {
-            if (mService != null && mService.isConnected()) {
-                IHumlaSession session = mService.HumlaSession();
-                if (session != null && session.getSessionChannel() != null) {
-                    return session.getSessionChannel().getName();
-                }
-            }
-        } catch (Exception e) {
-            Log.e("MumlaActivity", "Error get active channel: " + e.getMessage());
-        }
-        return null;
-    }*/
 
     @Override
     protected void onResume() {
@@ -690,15 +683,25 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             return;
         }
 
-        Toast.makeText(this, "Memvalidasi NRP ke server...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT).show();
 
         String url = "https://mumble.tekkombali.com/api/login";
         String apiKey = "RAHASIA_RADIO_24101981"; // Ganti dengan X-API-KEY yang valid di CI4 Anda
 
         OkHttpClient client = new OkHttpClient();
+        // AMBIL PASSWORD LANGSUNG DARI SERVER OBJECT ATAU CEK JIKA KOSONG
+        String passwordCi4 = server.getPassword();
+
+        // (Opsional Cadangan): Jika server.getPassword() isinya password mumble "PoldaBali241081",
+        // maka kita ambil dari SharedPreferences dengan fallback teks kosong
+        if (passwordCi4 == null || passwordCi4.equals("PoldaBali241081")) {
+            SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            passwordCi4 = prefs.getString("saved_ci4_password", "");
+        }
 
         RequestBody formBody = new FormBody.Builder()
                 .add("nrp", inputNrp.trim())
+                .add("password", passwordCi4)
                 .build();
 
         Request request = new Request.Builder()
@@ -732,7 +735,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             SessionManager sessionManager = new SessionManager(getApplicationContext());
                             sessionManager.createLoginSession(loginData.getProfile(), loginData.getAllowed_channels());
 
-// ---> PERBAIKAN DI SINI <---
                             try {
                                 List<Channel> channelObjects = loginData.getAllowed_channels();
                                 StringBuilder channelIdsBuilder = new StringBuilder("1"); // Selalu sertakan ID 1 (lobby utama)
@@ -759,7 +761,21 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                                 mDatabase.updateServer(server);
                             }
 
-                            Toast.makeText(getApplicationContext(), "Selamat datang, " + realname + " (" + kesatuan + ")", Toast.LENGTH_LONG).show();
+                            com.google.android.material.snackbar.Snackbar snackbar = com.google.android.material.snackbar.Snackbar.make(
+                                    findViewById(android.R.id.content),
+                                    "Selamat datang,\n" + realname,
+                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+                            );
+
+                            String fullText = "Selamat datang,\n" + realname;
+                            android.text.SpannableString spannable = new android.text.SpannableString(fullText);
+
+                            // Membuat nama menjadi TEBAL (Bold)
+                            spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                                    15, fullText.length(), 0);
+
+                            Toast toast = Toast.makeText(getApplicationContext(), spannable, Toast.LENGTH_LONG);
+                            toast.show();
 
                             mServerPendingPerm = server;
                             connectToServerWithPerm();
@@ -815,6 +831,12 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             ActivityCompat.requestPermissions(MumlaActivity.this,
                     new String[]{Manifest.permission.RECORD_AUDIO},
                     PERMISSIONS_REQUEST_RECORD_AUDIO);
+            return;
+        }
+
+        // 2. Cek izin LOKASI (BARU)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 100);
             return;
         }
 
@@ -896,6 +918,19 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             Toast.LENGTH_LONG).show();
                 }
                 break;
+
+            case 100:
+                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Jika pengguna memilih Allow/Izinkan, lanjutkan proses koneksi & kirim GPS
+                    connectToServerWithPerm();
+                } else {
+                    // Jika ditolak, beri tahu pengguna lalu tetap lanjutkan koneksi agar suara tetap bisa jalan
+                    Toast.makeText(MumlaActivity.this, "Izin lokasi ditolak, koordinat GPS tidak dikirim.",
+                            Toast.LENGTH_LONG).show();
+                    connectToServerWithPerm();
+                }
+                break;
+
             case PERMISSIONS_REQUEST_POST_NOTIFICATIONS:
                 mPermPostNotificationsAsked = true;
                 if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
@@ -989,63 +1024,78 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 mConnectingDialog.show();
                 break;
             case CONNECTION_LOST:
-                // Cast ke IMumlaService agar method isErrorShown dan markErrorShown bisa diakses
-                IMumlaService mumlaService = (IMumlaService) getService();
-                if (mumlaService != null && !mumlaService.isErrorShown()) {
-                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(MumlaActivity.this);
-                    builder.setTitle(getString(R.string.connectionRefused) + (mSettings.isTorEnabled() ? " (Tor)" : ""));
-                    HumlaException error = mumlaService.getConnectionError();
-                    if (error != null && mService.isReconnecting()) {
-                        builder.setMessage(error.getMessage() + "\n\n"
-                                + getString(R.string.attempting_reconnect,
-                                error.getCause() != null ? error.getCause().getMessage() : "unknown"));
-                        builder.setPositiveButton(R.string.cancel_reconnect, (dialog, which) -> {
-                            IMumlaService innerService = (IMumlaService) getService();
-                            if (innerService != null) {
-                                innerService.cancelReconnect();
-                                innerService.markErrorShown();
-                            }
-                        });
-                    } else if (error != null &&
-                            error.getReason() == HumlaException.HumlaDisconnectReason.REJECT &&
-                            (error.getReject().getType() == Mumble.Reject.RejectType.WrongUserPW ||
-                                    error.getReject().getType() == Mumble.Reject.RejectType.WrongServerPW)) {
-                        final EditText passwordField = new EditText(this);
-                        passwordField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-                        passwordField.setHint(R.string.password);
-                        builder.setTitle(R.string.invalid_password);
-                        builder.setMessage(error.getMessage());
-                        builder.setView(passwordField);
-                        builder.setPositiveButton(R.string.reconnect, (dialog, which) -> {
-                            Server server1 = mumlaService.getTargetServer();
-                            if (server1 == null) {
-                                return;
-                            }
-                            String password = passwordField.getText().toString();
-                            server1.setPassword(password);
-                            if (server1.isSaved()) {
-                                mDatabase.updateServer(server1);
-                            }
-                            connectToServer(server1);
-                        });
-                        builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> {
-                            IMumlaService innerService = (IMumlaService) getService();
-                            if (innerService != null) {
-                                innerService.markErrorShown();
-                            }
-                        });
-                    } else {
-                        String msg = error != null ? error.getMessage() : getString(R.string.unknown);
-                        builder.setMessage(msg);
-                        builder.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                            IMumlaService innerService = (IMumlaService) getService();
-                            if (innerService != null) {
-                                innerService.markErrorShown();
+                try {
+                    Object rawService = getService();
+                    if (rawService == null) {
+                        Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                        startActivity(intent);
+                        finish();
+                        break;
+                    }
+
+                    IMumlaService mumlaService = (IMumlaService) rawService;
+                    if (!mumlaService.isErrorShown()) {
+                        HumlaException error = mumlaService.getConnectionError();
+
+                        String rawMsg = error != null ? error.getMessage() : "";
+                        String errorMsg;
+                        String lowerMsg = rawMsg.toLowerCase();
+
+                        if (lowerMsg.contains("refused") || lowerMsg.contains("timed out") ||
+                                lowerMsg.contains("reset") || lowerMsg.contains("unreachable") ||
+                                lowerMsg.contains("failed") || lowerMsg.contains("closed")) {
+                            errorMsg = "Server Maintenance / Offline";
+                        } else if (lowerMsg.contains("network") || lowerMsg.contains("resolve") || lowerMsg.isEmpty()) {
+                            errorMsg = "Internet Down atau Tidak Ada Koneksi ke Server";
+                        } else {
+                            errorMsg = "Server Sedang Gangguan, lagi Maintenance atau Offline";
+                        }
+
+                        mumlaService.cancelReconnect();
+                        mumlaService.markErrorShown();
+
+                        // --- MUNCULKAN POPUP DIALOG DI HALAMAN UTAMA ---
+                        runOnUiThread(() -> {
+                            try {
+                                com.google.android.material.dialog.MaterialAlertDialogBuilder builder =
+                                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(MumlaActivity.this);
+                                builder.setTitle("Informasi Koneksi");
+                                builder.setMessage(errorMsg);
+                                builder.setCancelable(false);
+
+                                androidx.appcompat.app.AlertDialog errorDialog = builder.create();
+                                errorDialog.show();
+
+                                // Jeda 3.5 detik lalu tutup dialog dan muat ulang halaman utama
+                                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                                    try {
+                                        if (errorDialog.isShowing()) {
+                                            errorDialog.dismiss();
+                                        }
+                                        Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                        startActivity(intent);
+                                        finish();
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }, 3500);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                startActivity(intent);
+                                finish();
                             }
                         });
                     }
-                    builder.setCancelable(false);
-                    mErrorDialog = builder.show();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(intent);
+                    finish();
                 }
                 break;
             default:
@@ -1162,6 +1212,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                         if (loginData != null && loginData.isStatus()) {
                             String nama = loginData.getProfile().getRealname();
                             String kesatuan = loginData.getProfile().getKesatuan();
+
+                            SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                            String passwordCi4 = prefs.getString("saved_ci4_password", "");
 
                             // 1. SIMPAN SESI LOGIN & CHANNEL IZIN KE SHAREDPREFERENCES
                             SessionManager sessionManager = new SessionManager(getApplicationContext());

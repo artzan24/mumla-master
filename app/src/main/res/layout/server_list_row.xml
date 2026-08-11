@@ -16,7 +16,7 @@
   ~ along with this program.  If not, see <http://www.gnu.org/licenses/>.
   -->
 
-<androidx.cardview.widget.CardView
+<com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -24,9 +24,12 @@
     android:layout_height="wrap_content"
     android:layout_margin="0dp"
     app:cardCornerRadius="8dp"
-    app:cardBackgroundColor="#002b45"
-    android:foreground="?selectableItemBackground"
-    style="?cardStyle">
+    app:cardBackgroundColor="#062333"
+    app:cardUseCompatPadding="false"
+    app:strokeWidth="0dp"
+    app:strokeColor="#22ffffff"
+    android:foreground="?selectableItemBackground">
+
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -57,7 +60,7 @@
                     android:lines="1"
                     android:text="@string/server_host"
                     android:textColor="?android:textColorSecondary"
-                    android:textSize="16sp" />
+                    android:textSize="14sp" />
 
                 <RelativeLayout
                     android:id="@+id/server_row_info"
@@ -147,6 +150,7 @@
                         android:layout_height="match_parent"
                         android:layout_marginRight="5dp"
                         app:srcCompat="@drawable/ic_server_light"
+                        android:visibility="gone"
                         android:tint="?android:attr/textColorPrimary" />
 
                     <TextView
@@ -173,4 +177,4 @@
             app:srcCompat="@drawable/ic_card_overflow" />
 
     </RelativeLayout>
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

@@ -77,12 +77,13 @@ public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
         TextView userText = (TextView) view.findViewById(R.id.server_row_user);
         TextView addressText = (TextView) view.findViewById(R.id.server_row_address);
 
+        addressText.setVisibility(View.GONE);
+
         nameText.setText(server.getName());
 
         if(userText != null) userText.setText(server.getUsername());
         if (addressText != null) {
-            addressText.setText(server.getHost()
-                                + (server.getPort() == 0 ? "" : ":" + server.getPort()));
+            addressText.setText(server.getHost());
         }
 
         final ImageView moreButton = (ImageView) view.findViewById(R.id.server_row_more);

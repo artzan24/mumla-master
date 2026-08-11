@@ -83,6 +83,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     private TextView mActiveSpeakerText;
     private TextView mActiveSpeakerUser;
     private boolean mIsChannelBusy = false;
+    private MenuItem mMenuRegisterItem;
 
     private HumlaObserver mObserver = new HumlaObserver() {
         @Override
@@ -101,6 +102,8 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
 
             if (user != null) {
                 // 1. Logika untuk tombol PTT jika diri sendiri yang bicara
+                String username = user.getName();
+                String channelId = (user.getChannel() != null) ? String.valueOf(user.getChannel().getId()) : "0";
                 if (user.getSession() == selfSession) {
                     switch (user.getTalkState()) {
                         case TALKING:
@@ -109,11 +112,14 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                             mTalkButton.setPressed(true);
                             // Mengubah background & border tombol secara langsung menjadi HIJAU saat aktif/bicara
                             mTalkButton.setBackgroundResource(R.drawable.ptt_button_active_bg);
+                            //Kirim Data ke CI4 tekan tombol PTT layout dan fisik
+                            sendPttDataToApi(username, channelId, "speak");
                             break;
                         case PASSIVE:
                             mTalkButton.setPressed(false);
                             // Mengembalikan background & border tombol ke warna normal (Oranye)
                             mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
+                            sendPttDataToApi(username, channelId, "release");
                             break;
                     }
                 }
@@ -195,6 +201,8 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
             }
             if (user != null && user.getSession() == selfSession) {
                 configureInput();
+                // Update visibilitas menu register secara real-time
+                updateRegisterMenuVisibility();
             }
         }
 
@@ -351,13 +359,58 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         super.onCreateOptionsMenu(menu, inflater);
         inflater.inflate(R.menu.channel_menu, menu);
+        // Ambil referensi item register dari menu
+        mMenuRegisterItem = menu.findItem(R.id.action_register);
+
+        // Cek status awal saat menu pertama kali dibuat
+        updateRegisterMenuVisibility();
+    }
+
+    // Fungsi untuk mengecek dan menampilkan/menyembunyikan menu register
+    private void updateRegisterMenuVisibility() {
+        if (mMenuRegisterItem == null || getService() == null || !getService().isConnected()) {
+            return;
+        }
+
+        try {
+            IUser selfUser = getService().HumlaSession().getSessionUser();
+            if (selfUser != null) {
+                // Kondisi: Tampilkan menu hanya jika user belum terdaftar (userId < 0) dan hash valid
+                boolean canRegister = selfUser.getUserId() < 0 &&
+                        (selfUser.getHash() != null && !selfUser.getHash().isEmpty());
+
+                // Gunakan getActivity().runOnUiThread jika dipanggil dari background thread
+                getActivity().runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mMenuRegisterItem.setVisible(canRegister);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "exception in updateRegisterMenuVisibility: " + e);
+        }
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         Settings settings = Settings.getInstance(getActivity());
         int itemId = item.getItemId();
-        if (itemId == R.id.menu_input_voice) {
+        if (itemId == R.id.action_register) {
+            // Aksi ketika menu Register diklik oleh pengguna
+            try {
+                if (getService() != null && getService().isConnected()) {
+                    IUser selfUser = getService().HumlaSession().getSessionUser();
+                    if (selfUser != null && selfUser.getUserId() < 0) {
+                        getService().HumlaSession().registerUser(selfUser.getSession());
+                        android.widget.Toast.makeText(getActivity(), "Memproses pendaftaran...", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Gagal register manual: " + e);
+            }
+            return true;
+        } else if (itemId == R.id.menu_input_voice) {
             settings.setInputMethod(Settings.ARRAY_INPUT_METHOD_VOICE);
             return true;
         } else if (itemId == R.id.menu_input_ptt) {
@@ -401,40 +454,6 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         if (service.getConnectionState() == HumlaService.ConnectionState.CONNECTED) {
             configureTargetPanel();
             configureInput();
-
-            checkAndAutoRegisterUser();
-        }
-    }
-
-    private void checkAndAutoRegisterUser() {
-        if (getService() == null || !getService().isConnected()) {
-            return;
-        }
-
-        // Gunakan SharedPreferences agar auto-register hanya berjalan SEKALI saja
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getActivity());
-        boolean isAutoRegistered = prefs.getBoolean("is_auto_registered", false);
-
-        if (!isAutoRegistered) {
-            try {
-                IUser selfUser = getService().HumlaSession().getSessionUser();
-                if (selfUser != null) {
-                    // Cek kondisi apakah user belum terdaftar (userId < 0) dan memiliki hash valid
-                    boolean canRegister = selfUser.getUserId() < 0 &&
-                            (selfUser.getHash() != null && !selfUser.getHash().isEmpty());
-
-                    if (canRegister) {
-                        // Panggil perintah register user ke server
-                        getService().HumlaSession().registerUser(selfUser.getSession());
-
-                        // Simpan status agar tidak ter-trigger berulang kali
-                        prefs.edit().putBoolean("is_auto_registered", true).apply();
-                        Log.d(TAG, "Auto register sent for user session: " + selfUser.getSession());
-                    }
-                }
-            } catch (Exception e) {
-                Log.d(TAG, "exception in checkAndAutoRegisterUser: " + e);
-            }
         }
     }
 
@@ -444,22 +463,46 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
             mTargetPanel.setVisibility(View.GONE);
         }
         return;
-
-    /* --- KODE ASLI DIBAWAH INI DINONAKTIFKAN ---
-    if (getService() == null || !getService().isConnected()) {
-        return;
     }
 
-    IHumlaSession session = getService().HumlaSession();
-    VoiceTargetMode mode = session.getVoiceTargetMode();
-    if (mode == VoiceTargetMode.WHISPER) {
-        WhisperTarget target = session.getWhisperTarget();
-        mTargetPanel.setVisibility(View.VISIBLE);
-        mTargetPanelText.setText(getString(R.string.shout_target, target.getName()));
-    } else {
-        mTargetPanel.setVisibility(View.GONE);
-    }
-    ------------------------------------------- */
+    // FUNGSI: KIRIM DATA PTT KE API CI4 DENGAN HEADER API KEY
+    private void sendPttDataToApi(final String username, final String channelId, final String statusSpeak) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Ganti URL di bawah ini dengan endpoint API CodeIgniter 4 Anda
+                    java.net.URL url = new java.net.URL("https://mumble.tekkombali.com/api/logspeak");
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json; utf-8");
+                    conn.setRequestProperty("Accept", "application/json");
+
+                    // TAMBAHKAN HEADER API KEY DI SINI
+                    conn.setRequestProperty("X-API-KEY", "RAHASIA_RADIO_24101981");
+
+                    conn.setDoOutput(true);
+
+                    // Data JSON yang dikirim ke CI4
+                    String jsonInputString = String.format(
+                            "{\"username\": \"%s\", \"channel_id\": \"%s\", \"status_speak\": \"%s\"}",
+                            username, channelId, statusSpeak
+                    );
+
+                    try (java.io.OutputStream os = conn.getOutputStream()) {
+                        byte[] input = jsonInputString.getBytes("utf-8");
+                        os.write(input, 0, input.length);
+                    }
+
+                    int responseCode = conn.getResponseCode();
+                    Log.d(TAG, "API CI4 PTT Response Code: " + responseCode);
+
+                } catch (Exception e) {
+                    Log.d(TAG, "Gagal mengirim data PTT ke API: " + e.getMessage());
+                }
+            }
+        }).start();
     }
 
     private boolean isShowingPinnedChannels() {

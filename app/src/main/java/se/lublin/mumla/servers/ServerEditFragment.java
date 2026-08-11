@@ -21,9 +21,11 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -47,6 +49,7 @@ public class ServerEditFragment extends DialogFragment {
     private EditText mPortEdit;
     private EditText mUsernameEdit;
     private EditText mPasswordEdit;
+    private ImageView mTogglePasswordBtn; // Tombol tanda mata
 
     private ServerEditListener mListener;
 
@@ -87,6 +90,9 @@ public class ServerEditFragment extends DialogFragment {
             @Override
             public void onClick(View v) {
                 if (validate()) {
+                    String inputCi4Pass = mPasswordEdit.getText().toString().trim();
+                    android.content.SharedPreferences prefs = requireActivity().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                    prefs.edit().putString("saved_ci4_password", inputCi4Pass).apply();
                     Server server = createServer();
                     mListener.onServerEdited(getAction(), server);
                     dismiss();
@@ -124,7 +130,41 @@ public class ServerEditFragment extends DialogFragment {
         mPortEdit = view.findViewById(R.id.server_edit_port);
         mUsernameEdit = view.findViewById(R.id.server_edit_username);
         mUsernameEdit.setHint(settings.getDefaultUsername());
+
         mPasswordEdit = view.findViewById(R.id.server_edit_password);
+        mTogglePasswordBtn = view.findViewById(R.id.btn_toggle_password);
+
+        mPortEdit.setText("50000");
+        mPortEdit.setVisibility(View.GONE);
+        mNameEdit.setText("Polda Bali");
+        mNameEdit.setVisibility(View.GONE);
+
+        titleLabel.setVisibility(View.GONE);
+
+        View portLabel = view.findViewById(R.id.server_edit_port_title); // Sesuaikan ID jika ada
+        if (portLabel != null) {
+            portLabel.setVisibility(View.GONE);
+        }
+
+        // Logika Tombol Tanda Mata (Toggle Password Visibility)
+        // Logika Tombol Tanda Mata (Toggle Password Visibility)
+        final boolean[] isPasswordVisible = {false};
+        if (mTogglePasswordBtn != null && mPasswordEdit != null) {
+            mTogglePasswordBtn.setOnClickListener(v -> {
+                if (isPasswordVisible[0]) {
+                    // Sembunyikan password (kembalikan ke mode titik-titik)
+                    mPasswordEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                    mTogglePasswordBtn.setImageResource(R.drawable.ic_visibility);
+                } else {
+                    // Tampilkan password secara teks biasa (terlihat)
+                    mPasswordEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+                    mTogglePasswordBtn.setImageResource(R.drawable.ic_visibility_off);
+                }
+                isPasswordVisible[0] = !isPasswordVisible[0];
+                // Pindahkan kursor ke bagian akhir teks
+                mPasswordEdit.setSelection(mPasswordEdit.getText().length());
+            });
+        }
 
         Server oldServer = getServer();
         if (oldServer != null) {
@@ -134,7 +174,10 @@ public class ServerEditFragment extends DialogFragment {
                 mPortEdit.setText(String.valueOf(oldServer.getPort()));
             }
             mUsernameEdit.setText(oldServer.getUsername());
-            mPasswordEdit.setText(oldServer.getPassword());
+            // AMBIL PASSWORD DATABASE YANG SEBELUMNYA TERSIMPAN OTOMATIS
+            android.content.SharedPreferences prefs = requireActivity().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            String savedPassword = prefs.getString("saved_ci4_password", "");
+            mPasswordEdit.setText(savedPassword);
         }
 
         if (shouldIgnoreTitle()) {
@@ -153,23 +196,25 @@ public class ServerEditFragment extends DialogFragment {
         String name = (mNameEdit).getText().toString().trim();
         String host = (mHostEdit).getText().toString().trim();
 
-        int port;
+        int port = 50000;
         try {
             port = Integer.parseInt((mPortEdit).getText().toString());
         } catch (final NumberFormatException ex) {
-            // Setting 0, meaning that port isn't configured. Consumers of
-            // Server.getPort() will have to deal with that. Like displaying
-            // nothing, looking up SRV record, using Constants.DEFAULT_PORT.
             port = 0;
         }
 
         String username = (mUsernameEdit).getText().toString().trim();
-        String password = mPasswordEdit.getText().toString();
+
+        // 1. Password untuk koneksi core Mumble (Ditetapkan tetap/hardcode sesuai server)
+        String passwordMumble = "PoldaBali241081";
+
+        // 2. (Opsional) Jika Anda perlu menyimpan inputan password CI4 ke dalam objek server
+        // atau membawanya ke proses selanjutnya, bisa diambil dari mPasswordEdit:
+        String passwordCi4Input = mPasswordEdit != null ? mPasswordEdit.getText().toString().trim() : "";
 
         if (username.equals(""))
             username = mUsernameEdit.getHint().toString();
 
-        // Inherit database ID of provided server.
         long id;
         if (getServer() != null) {
             id = getServer().getId();
@@ -177,7 +222,8 @@ public class ServerEditFragment extends DialogFragment {
             id = -1;
         }
 
-        return new Server(id, name, host, port, username, password);
+        // Mengembalikan objek Server dengan password Mumble "PoldaBali241081"
+        return new Server(id, name, host, port, username, passwordMumble);
     }
 
     /**

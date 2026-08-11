@@ -399,7 +399,7 @@ public class MumlaService extends HumlaService implements
             }
 
             // Loop setiap 30 detik
-            mBackgroundSyncHandler.postDelayed(this, 60000);
+            mBackgroundSyncHandler.postDelayed(this, 5000);
         }
     };
 

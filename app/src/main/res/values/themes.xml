@@ -38,6 +38,14 @@
         <item name="android:windowBackground">@color/md_theme_dark_primary</item>
     </style>
 
+    <!-- DI EDIT DI SINI: Samakan warna windowBackground dengan warna background utama/toolbar aplikasi Anda -->
+    <style name="Theme.Mumla.NoFlash" parent="Theme.Mumla">
+        <item name="android:windowBackground">@color/md_theme_dark_primary</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowTranslucentStatus">true</item>
+    </style>
+
     <style name="App.Widget.ActionMode" parent="Widget.AppCompat.ActionMode">
     </style>
 

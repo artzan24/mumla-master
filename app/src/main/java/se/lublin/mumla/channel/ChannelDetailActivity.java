@@ -26,6 +26,7 @@ import se.lublin.humla.IHumlaService;
 import se.lublin.humla.IHumlaSession;
 import se.lublin.humla.model.IChannel;
 import se.lublin.mumla.R;
+import se.lublin.mumla.app.MumlaActivity;
 import se.lublin.mumla.service.MumlaService;
 
 public class ChannelDetailActivity extends AppCompatActivity {
@@ -46,10 +47,61 @@ public class ChannelDetailActivity extends AppCompatActivity {
     private boolean mIsPttBlocked = false;
 
     // Handler untuk pemantauan status real-time (channel sibuk/idle & user bicara)
+    // Handler untuk pemantauan status real-time (channel sibuk/idle, user bicara, & deteksi server down)
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private final Runnable mStatusRunnable = new Runnable() {
         @Override
         public void run() {
+            // --- DETEKSI KONEKSI PUTUS / SERVER DOWN DI HALAMAN DETAIL ---
+            if (mBound && mService != null) {
+                try {
+                    // Jika service mendeteksi koneksi terputus atau error
+                    if (!mService.isConnected()) {
+                        mStatusHandler.removeCallbacks(this); // Hentikan handler agar tidak looping error
+
+                        // Tampilkan dialog informasi di ChannelDetailActivity
+                        runOnUiThread(() -> {
+                            try {
+                                com.google.android.material.dialog.MaterialAlertDialogBuilder builder =
+                                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(ChannelDetailActivity.this);
+                                builder.setTitle("Informasi Koneksi");
+                                builder.setMessage("Server Sedang Gangguan, lagi Maintenance atau Offline");
+                                builder.setCancelable(false);
+
+                                androidx.appcompat.app.AlertDialog errorDialog = builder.create();
+                                errorDialog.show();
+
+                                // Jeda 3.5 detik lalu paksa kembali ke MumlaActivity (List Server)
+                                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                    try {
+                                        if (errorDialog.isShowing()) {
+                                            errorDialog.dismiss();
+                                        }
+                                        Intent intent = new Intent(ChannelDetailActivity.this, MumlaActivity.class);
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                        startActivity(intent);
+                                        finish();
+                                    } catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
+                                }, 3500);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                // Fallback langsung pindah jika dialog gagal
+                                Intent intent = new Intent(ChannelDetailActivity.this, MumlaActivity.class);
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                                startActivity(intent);
+                                finish();
+                            }
+                        });
+                        return; // Keluar dari runnable
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error checking connection status: " + e.getMessage());
+                }
+            }
+            // -------------------------------------------------------------
+
             updateJoinStateUI();
             mStatusHandler.postDelayed(this, 1000); // Cek setiap 1 detik
         }
@@ -139,6 +191,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 IHumlaSession session = mService.HumlaSession();
                                 if (session != null) {
                                     session.setTalkingState(true);
+                                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
                                 }
                             } catch (Exception e) {
                                 Log.e(TAG, "Error starting talk: " + e);
@@ -162,6 +215,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 IHumlaSession session = mService.HumlaSession();
                                 if (session != null) {
                                     session.setTalkingState(false);
+                                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                                 }
                             } catch (Exception e) {
                                 Log.e(TAG, "Error stopping talk: " + e);
@@ -172,6 +226,36 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 return false;
             });
         }
+    }
+
+    // ==========================================
+    // FUNGSI: KIRIM DATA PTT KE API CI4
+    // ==========================================
+    private void sendPttDataToApi(final String username, final String channelId, final String statusSpeak) {
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL("https://mumble.tekkombali.com/api/logspeak");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json; utf-8");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setRequestProperty("X-API-KEY", "RAHASIA_RADIO_24101981");
+                conn.setDoOutput(true);
+
+                String jsonInputString = String.format(
+                        "{\"username\": \"%s\", \"channel_id\": \"%s\", \"status_speak\": \"%s\"}",
+                        username, channelId, statusSpeak
+                );
+
+                try (java.io.OutputStream os = conn.getOutputStream()) {
+                    byte[] input = jsonInputString.getBytes("utf-8");
+                    os.write(input, 0, input.length);
+                }
+                conn.getResponseCode();
+            } catch (Exception e) {
+                Log.e(TAG, "Gagal kirim PTT ke API: " + e.getMessage());
+            }
+        }).start();
     }
 
     @Override
@@ -454,6 +538,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 IHumlaSession session = mService.HumlaSession();
                 if (session != null) {
                     session.setTalkingState(true);
+                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error starting talk via physical key: " + e);
@@ -483,6 +568,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 IHumlaSession session = mService.HumlaSession();
                 if (session != null) {
                     session.setTalkingState(false);
+                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error stopping talk via physical key: " + e);

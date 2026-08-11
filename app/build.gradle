@@ -53,7 +53,15 @@ android {
     }
 
     base {
-        archivesName = "mumla"
+        //archivesName = "mumla"
+        archivesName = "roip-tik-bali"
+    }
+
+    // Tambahkan blok ini tepat di bawah blok base atau di dalam blok android
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "roip-tik-bali.apk"
+        }
     }
 
     // gradle8: Need to enable this when defaultConfig below contains some custom BuildConfig
@@ -71,11 +79,10 @@ android {
         targetSdk 36
 
         applicationId "se.lublin.mumla"
-        // Remember: app_news_items_vX_Y_Z in src/main/res/values/strings.xml
-        // and NEWS_ITEMS in src/main/res/java/se/lublin/mumla/app/DialogUtils.java
-        //     code:XYYZZbb (bb for build)
-        versionCode 3070300
-        versionName gitDescribe
+        //versionCode 3070300
+        //versionName gitDescribe
+        versionCode 1
+        versionName "1.0"
 
         buildConfigField "long", "TIMESTAMP", System.currentTimeMillis() + "L"
         buildConfigField "String", "VERSIONTAG", "\"" + gitDescribe.split("-")[0] + "\""
@@ -93,14 +100,14 @@ android {
             dimension "release"
             applicationId "se.lublin.mumla"
         }
-        donation {
+        /*donation {
             dimension "release"
             applicationId "se.lublin.mumla.donation"
         }
         beta {
             dimension "release"
             applicationId "se.lublin.mumla.beta"
-        }
+        }*/
     }
 
     buildTypes {
@@ -163,6 +170,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'com.google.android.gms:play-services-location:21.0.1'
+
+    implementation 'androidx.core:core-splashscreen:1.0.1'
 
     googImplementation 'com.android.billingclient:billing:7.1.1'
 }

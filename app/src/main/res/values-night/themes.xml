@@ -28,6 +28,11 @@
     <!-- forcing preference dialogs to use the Material builder -->
     <style name="TweakedDialogPreference" parent="Preference.DialogPreference.Material" />
 
+    <style name="Theme.Mumla.NoFlash" parent="Theme.Mumla">
+        <item name="android:windowBackground">#121212</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
     <style name="Theme.Mumla.Dark.CardView" parent="CardView">
         <item name="cardBackgroundColor">#202020</item>
     </style>
