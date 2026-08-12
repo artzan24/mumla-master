@@ -253,6 +253,21 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
 
         mViewPager = (ViewPager) view.findViewById(R.id.channel_view_pager);
 
+        mViewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
+            @Override
+            public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {}
+
+            @Override
+            public void onPageSelected(int position) {
+                if (position != 0) {
+                    hideActiveSpeakerPanelAndReleasePtt();
+                }
+            }
+
+            @Override
+            public void onPageScrollStateChanged(int state) {}
+        });
+
         mTalkView = view.findViewById(R.id.pushtotalk_view);
         mTalkButton = (ImageButton) view.findViewById(R.id.pushtotalk);
 
@@ -426,6 +441,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     @Override
     public void onPause() {
         super.onPause();
+        hideActiveSpeakerPanelAndReleasePtt();
         if (mTalkButton != null) {
             mTalkButton.setPressed(false);
             mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
@@ -433,6 +449,61 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         if (getService() != null && getService().isConnected() &&
                 !Settings.getInstance(getActivity()).isPushToTalkToggle()) {
             getService().HumlaSession().setTalkingState(false);
+        }
+    }
+
+    @Override
+    public void onHiddenChanged(boolean hidden) {
+        super.onHiddenChanged(hidden);
+        if (hidden) {
+            hideActiveSpeakerPanelAndReleasePtt();
+        }
+    }
+
+    // Fungsi khusus untuk menyembunyikan panel speaker & merilis PTT agar tidak nyangkut
+    private void hideActiveSpeakerPanelAndReleasePtt() {
+        // 1. Reset status sibuk lokal
+        mIsChannelBusy = false;
+
+        // 2. Sembunyikan panel & kembalikan tombol ke warna normal
+        if (mActiveSpeakerPanel != null && getActivity() != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mActiveSpeakerPanel.setVisibility(View.GONE);
+                    if (mTalkButton != null) {
+                        mTalkButton.setPressed(false);
+                        mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
+                    }
+                }
+            });
+        }
+
+        // 3. Paksa lepaskan PTT melalui service Mumble
+        if (getService() != null && getService().isConnected()) {
+            try {
+                // Panggil key-up dan set talking state false
+                getService().onTalkKeyUp();
+
+                IHumlaSession session = getService().HumlaSession();
+                if (session != null) {
+                    session.setTalkingState(false);
+
+                    // Ambil data user saat ini untuk dikirimkan status release ke API CI4
+                    if (session.getSessionUser() != null) {
+                        String username = session.getSessionUser().getName();
+                        String channelId = (session.getSessionChannel() != null) ?
+                                String.valueOf(session.getSessionChannel().getId()) : "0";
+
+                        // KIRIM PAKSA STATUS RELEASE KE API CI4
+                        sendPttDataToApi(username, channelId, "release");
+                    }
+                }
+
+                Log.d(TAG, "PTT secara paksa di-release dan dilaporkan ke API.");
+            } catch (Exception e) {
+                Log.d(TAG, "Error forcing talk key up / API release: " + e);
+            }
         }
     }
 

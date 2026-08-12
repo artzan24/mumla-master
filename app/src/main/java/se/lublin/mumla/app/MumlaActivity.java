@@ -89,6 +89,7 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
 import se.lublin.mumla.channel.AccessTokenFragment;
 import se.lublin.mumla.channel.ChannelFragment;
+import se.lublin.mumla.channel.ChannelListFragment;
 import se.lublin.mumla.channel.ServerInfoFragment;
 import se.lublin.mumla.db.DatabaseCertificate;
 import se.lublin.mumla.db.DatabaseProvider;
@@ -121,7 +122,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import se.lublin.mumla.model.LoginResponse;
-import se.lublin.mumla.model.SessionManager;
+import se.lublin.mumla.helper.SessionManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
@@ -132,6 +133,19 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         SharedPreferences.OnSharedPreferenceChangeListener, DrawerAdapter.DrawerDataProvider,
         ServerEditFragment.ServerEditListener {
     private static final String TAG = MumlaActivity.class.getName();
+
+    private final Handler mChannelSyncHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mChannelSyncRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // Lakukan pengecekan ke API CI4 hanya jika user sedang terhubung ke server Mumble
+            if (mService != null && mService.isConnected()) {
+                fetchAllowedChannelsFromApi();
+            }
+            // Ulangi setiap 30 detik (30000 milidetik)
+            mChannelSyncHandler.postDelayed(this, 30000);
+        }
+    };
 
     /**
      * If specified, the provided integer drawer fragment ID is shown when the activity is created.
@@ -185,6 +199,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             mService = null;
         }
     };
+
+
 
     private final HumlaObserver mObserver = new HumlaObserver() {
         @Override
@@ -427,7 +443,20 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         super.onResume();
         Intent connectIntent = new Intent(this, MumlaService.class);
         bindService(connectIntent, mConnection, 0);
-        //mSyncHandler.post(mSyncRunnable);
+
+        // ==========================================
+        // 1. REFRESH LANGSUNG SAAT RESUME / DARI SPLASH
+        // ==========================================
+        if (mService != null && mService.isConnected()) {
+            fetchAllowedChannelsFromApi();
+        }
+
+        // 2. NYALAKAN POLLING BERKALA SELANJUTNYA (Setiap 30 detik)
+        if (mChannelSyncHandler != null && mChannelSyncRunnable != null) {
+            mChannelSyncHandler.postDelayed(mChannelSyncRunnable, 30000);
+        }
+        // ==========================================
+
         if (mDrawerLayout != null) {
             mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
         }
@@ -437,24 +466,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     protected void onPause() {
         super.onPause();
 
-        // Hentikan routine sinkronisasi realtime saat aplikasi di-pause/ditinggalkan
-        /*if (mSyncHandler != null) {
-            mSyncHandler.removeCallbacks(mSyncRunnable);
+        if (mChannelSyncHandler != null && mChannelSyncRunnable != null) {
+            mChannelSyncHandler.removeCallbacks(mChannelSyncRunnable);
         }
-
-        // Laporkan status offline ke server saat aplikasi ditutup/ditinggalkan
-        try {
-            String currentUsername = "";
-            SharedPreferences prefs = getSharedPreferences("mumla_preferences", Context.MODE_PRIVATE);
-            currentUsername = prefs.getString("username", "");
-
-            if (!currentUsername.isEmpty()) {
-                // Kirim 4 parameter lengkap: Context, username, status, keterangan
-                RealtimeStatusSync.sendStatus(this, currentUsername, "offline", "Aplikasi Ditutup");
-            }
-        } catch (Exception e) {
-            Log.e("MumlaSync", "Error send offline status: " + e.getMessage());
-        }*/
 
         if (mErrorDialog != null)
             mErrorDialog.dismiss();
@@ -896,6 +910,10 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
         }
 
+        server.setHost("roip.tekkombali.my.id");
+        server.setPort(50000);
+        server.setPassword("PoldaBali241081");
+
         ServerConnectTask connectTask = new ServerConnectTask(this, mDatabase);
         connectTask.execute(server);
     }
@@ -1025,79 +1043,60 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 break;
             case CONNECTION_LOST:
                 try {
-                    Object rawService = getService();
-                    if (rawService == null) {
-                        Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                        startActivity(intent);
-                        finish();
-                        break;
-                    }
-
-                    IMumlaService mumlaService = (IMumlaService) rawService;
-                    if (!mumlaService.isErrorShown()) {
+                    IMumlaService mumlaService = (IMumlaService) getService();
+                    if (mumlaService != null && !mumlaService.isErrorShown()) {
                         HumlaException error = mumlaService.getConnectionError();
 
-                        String rawMsg = error != null ? error.getMessage() : "";
-                        String errorMsg;
+                        // Mencegah NullPointerException jika getMessage() bernilai null
+                        String rawMsg = (error != null && error.getMessage() != null) ? error.getMessage() : "";
                         String lowerMsg = rawMsg.toLowerCase();
+                        String errorMsg;
 
-                        if (lowerMsg.contains("refused") || lowerMsg.contains("timed out") ||
-                                lowerMsg.contains("reset") || lowerMsg.contains("unreachable") ||
-                                lowerMsg.contains("failed") || lowerMsg.contains("closed")) {
-                            errorMsg = "Server Maintenance / Offline";
-                        } else if (lowerMsg.contains("network") || lowerMsg.contains("resolve") || lowerMsg.isEmpty()) {
-                            errorMsg = "Internet Down atau Tidak Ada Koneksi ke Server";
+                        // Klasifikasi Pesan Error yang Lebih Presisi
+                        if (lowerMsg.contains("certificate") || lowerMsg.contains("handshake") || lowerMsg.contains("ssl") || lowerMsg.contains("tls")) {
+                            errorMsg = "Gagal Verifikasi Sertifikat SSL/TLS Server NRP sudah digunakan";
+                        } else if (lowerMsg.contains("refused") || lowerMsg.contains("unreachable")) {
+                            errorMsg = "Server Offline / Port " + (service.getTargetServer() != null ? service.getTargetServer().getPort() : "") + " Tertutup";
+                        } else if (lowerMsg.contains("timed out") || lowerMsg.contains("timeout")) {
+                            errorMsg = "Koneksi Timeout (Cek IP Server & Port)";
+                        } else if (lowerMsg.contains("network") || lowerMsg.contains("resolve") || lowerMsg.contains("unknown host")) {
+                            errorMsg = "Koneksi Internet Lemah / Host Domain Tidak Ditemukan";
+                        } else if (!rawMsg.isEmpty()) {
+                            errorMsg = "Gagal Terhubung Server Sedang Gangguan atau Offline";
                         } else {
-                            errorMsg = "Server Sedang Gangguan, lagi Maintenance atau Offline";
+                            errorMsg = "Gagal Terhubung Server Sedang Gangguan atau Offline";
                         }
 
                         mumlaService.cancelReconnect();
                         mumlaService.markErrorShown();
 
-                        // --- MUNCULKAN POPUP DIALOG DI HALAMAN UTAMA ---
+                        final String finalErrorMsg = errorMsg;
+
                         runOnUiThread(() -> {
                             try {
-                                com.google.android.material.dialog.MaterialAlertDialogBuilder builder =
-                                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(MumlaActivity.this);
-                                builder.setTitle("Informasi Koneksi");
-                                builder.setMessage(errorMsg);
-                                builder.setCancelable(false);
+                                if (isFinishing() || isDestroyed()) return;
 
-                                androidx.appcompat.app.AlertDialog errorDialog = builder.create();
-                                errorDialog.show();
+                                mErrorDialog = new MaterialAlertDialogBuilder(MumlaActivity.this)
+                                        .setTitle("Informasi Koneksi")
+                                        .setMessage(finalErrorMsg)
+                                        .setCancelable(false)
+                                        .setPositiveButton("OK", (dialog, which) -> {
+                                            dialog.dismiss();
+                                            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                                        })
+                                        .create();
+                                mErrorDialog.show();
 
-                                // Jeda 3.5 detik lalu tutup dialog dan muat ulang halaman utama
-                                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                                    try {
-                                        if (errorDialog.isShowing()) {
-                                            errorDialog.dismiss();
-                                        }
-                                        Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                                        startActivity(intent);
-                                        finish();
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
-                                    }
-                                }, 3500);
                             } catch (Exception e) {
-                                e.printStackTrace();
-                                Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                                startActivity(intent);
-                                finish();
+                                Log.e(TAG, "Error showing dialog", e);
                             }
                         });
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
-                    Intent intent = new Intent(MumlaActivity.this, MumlaActivity.class);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                    startActivity(intent);
-                    finish();
+                    Log.e(TAG, "Error handling CONNECTION_LOST", e);
                 }
                 break;
+
             default:
                 break;
         }
@@ -1106,6 +1105,126 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     /*
      * HERE BE IMPLEMENTATIONS
      */
+
+    private void fetchAllowedChannelsFromApi() {
+        SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+        String inputNrp = prefs.getString("saved_username", "");
+        String passwordCi4 = prefs.getString("saved_ci4_password", "");
+
+        if (inputNrp.isEmpty()) {
+            if (mService != null && mService.getTargetServer() != null) {
+                inputNrp = mService.getTargetServer().getUsername();
+            }
+        }
+
+        if (inputNrp == null || inputNrp.trim().isEmpty()) {
+            return;
+        }
+
+        String url = "https://mumble.tekkombali.com/api/login";
+        String apiKey = "RAHASIA_RADIO_24101981";
+
+        OkHttpClient client = new OkHttpClient();
+
+        RequestBody formBody = new FormBody.Builder()
+                .add("nrp", inputNrp.trim())
+                .add("password", passwordCi4)
+                .build();
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-API-KEY", apiKey)
+                .post(formBody)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.e("MUMBLE_SYNC", "Gagal melakukan sync channel: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseBodyString = response.body().string();
+
+                    try {
+                        Gson gson = new Gson();
+                        LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
+
+                        if (loginData != null && loginData.isStatus()) {
+                            List<Channel> channelObjects = loginData.getAllowed_channels();
+                            StringBuilder channelIdsBuilder = new StringBuilder("1");
+
+                            if (channelObjects != null) {
+                                for (Channel ch : channelObjects) {
+                                    int channelId = Integer.parseInt(ch.getId());
+                                    if (channelId != 1) {
+                                        channelIdsBuilder.append(",").append(channelId);
+                                    }
+                                }
+                            }
+
+                            String newChannelsString = channelIdsBuilder.toString();
+                            String oldChannelsString = prefs.getString("allowed_channels", "");
+
+                            if (!newChannelsString.equals(oldChannelsString)) {
+                                prefs.edit().putString("allowed_channels", newChannelsString).apply();
+
+                                // 1. KIRIM BROADCAST UNTUK REFRESH UI LIST CHANNEL
+                                Intent updateIntent = new Intent("ACTION_UPDATE_CHANNELS");
+                                sendBroadcast(updateIntent);
+
+                                // 2. CEK APAKAH USER SEDANG BERADA DI CHANNEL YANG DICABUT AKSESNYA
+                                if (mService != null && mService.isConnected()) {
+                                    try {
+                                        IHumlaSession session = mService.HumlaSession();
+                                        if (session != null && session.getSessionChannel() != null) {
+                                            int currentChannelId = session.getSessionChannel().getId();
+
+                                            // Jika user berada di luar Channel 1 dan channel tersebut sudah tidak ada di allowed_channels
+                                            if (currentChannelId != 1 && !newChannelsString.contains(String.valueOf(currentChannelId))) {
+
+                                                // PINDAHKAN PAKSA KEMBALI KE GUEST/ROOT CHANNEL (ID 1)
+                                                // Otomatis melepas PTT/transmisi suara karena keluar dari channel lama
+                                                session.joinChannel(1);
+
+                                                // BERITAHU USER MELALUI TOAST
+                                                runOnUiThread(() -> {
+                                                    Toast.makeText(MumlaActivity.this, "Akses channel dicabut. Anda dipindahkan ke Guest (Channel 1).", Toast.LENGTH_LONG).show();
+                                                });
+                                            }
+                                        }
+                                    } catch (Exception serviceErr) {
+                                        Log.e("MUMBLE_SYNC", "Error checking active channel: " + serviceErr.getMessage());
+                                    }
+                                }
+
+                                // 3. UPDATE FRAGMENT UI SEPERTI BIASA
+                                runOnUiThread(() -> {
+                                    try {
+                                        Fragment currentFragment = getSupportFragmentManager().findFragmentByTag(ChannelFragment.class.getName());
+                                        if (currentFragment instanceof ChannelFragment) {
+                                            ChannelListFragment channelListFragment = (ChannelListFragment)
+                                                    getSupportFragmentManager().findFragmentByTag(ChannelListFragment.class.getName());
+
+                                            if (channelListFragment != null) {
+                                                channelListFragment.updateAllowedChannels(newChannelsString);
+                                            }
+                                        }
+                                    } catch (Exception err) {
+                                        Log.e("MUMBLE_SYNC", "Error updating UI fragment: " + err.getMessage());
+                                    }
+                                });
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e("MUMBLE_SYNC", "Parsing error: " + e.getMessage());
+                    }
+                }
+            }
+        });
+    }
 
     @Override
     public IMumlaService getService() {

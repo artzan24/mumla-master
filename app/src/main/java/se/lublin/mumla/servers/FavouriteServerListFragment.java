@@ -18,9 +18,9 @@
 package se.lublin.mumla.servers;
 
 import android.app.Activity;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -29,11 +29,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
-import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.GridView;
-import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.fragment.app.Fragment;
 
@@ -44,7 +40,6 @@ import java.util.List;
 import se.lublin.humla.model.Server;
 import se.lublin.mumla.R;
 import se.lublin.mumla.db.DatabaseProvider;
-import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.db.PublicServer;
 
 /**
@@ -83,19 +78,10 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
         View view = inflater.inflate(R.layout.fragment_server_list, container, false);
         mServerGrid = (GridView) view.findViewById(R.id.server_list_grid);
         mServerGrid.setOnItemClickListener(this);
-        mServerGrid.setEmptyView(view.findViewById(R.id.server_list_grid_empty));
+        //mServerGrid.setEmptyView(view.findViewById(R.id.server_list_grid_empty));
 
         registerForContextMenu(mServerGrid);
-        // Menambahkan event klik untuk teks + Add Server
-        TextView addServerText = (TextView) view.findViewById(R.id.menu_add_server_text);
-        if (addServerText != null) {
-            addServerText.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    addServer();
-                }
-            });
-        }
+
         return view;
     }
 
@@ -108,6 +94,25 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
     @Override
     public void onResume() {
         super.onResume();
+        List<Server> currentServers = getServers();
+        if (currentServers == null || currentServers.isEmpty()) {
+            // Buat server default secara otomatis agar form login langsung ter-render
+            try {
+                Server defaultServer = new Server(
+                        -1,                         // ID
+                        "Polda Bali",       // Nama Server
+                        "roip.tekkombali.my.id",    // Host/IP
+                        50000,                      // Port Mumble Default
+                        "",                         // Username default kosong
+                        ""                          // Password kosong
+                );
+
+                // Masukkan ke database aplikasi
+                mDatabaseProvider.getDatabase().addServer(defaultServer);
+            } catch (Exception e) {
+                Log.d("FavouriteServerList", "Gagal auto-add server: " + e.getMessage());
+            }
+        }
         updateServers();
     }
 
@@ -138,7 +143,7 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
     public void shareServer(Server server) {
         // Build Mumble server URL
         String serverUrl = "mumble://" + server.getHost()
-            + (server.getPort() == 0 ? "" : ":" + server.getPort()) + "/";
+                + (server.getPort() == 0 ? "" : ":" + server.getPort()) + "/";
 
         Intent intent = new Intent();
         intent.setAction(Intent.ACTION_SEND);
@@ -160,11 +165,21 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
 
     public void updateServers() {
         List<Server> servers = getServers();
-        mServerAdapter = new FavouriteServerAdapter(getActivity(), servers, this);
+
+        // Membuat FavouriteServerAdapter secara anonim agar bisa meng-override method onServerConnectClick
+        FavouriteServerAdapter favAdapter = new FavouriteServerAdapter(getActivity(), servers, this) {
+            @Override
+            public void onServerConnectClick(Server server) {
+                super.onServerConnectClick(server);
+                if (mConnectHandler != null && server != null) {
+                    mConnectHandler.connectToServer(server);
+                }
+            }
+        };
+
+        mServerAdapter = favAdapter;
         mServerGrid.setAdapter(mServerAdapter);
     }
-
-
 
     public List<Server> getServers() {
         List<Server> servers = mDatabaseProvider.getDatabase().getServers();
@@ -173,7 +188,7 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
 
     @Override
     public void onItemClick(AdapterView<?> arg0, View arg1, int arg2, long arg3) {
-        mConnectHandler.connectToServer(mServerAdapter.getItem(arg2));
+        // Biarkan kosong atau tangani jika item grid diklik di luar tombol connect
     }
 
     public static interface ServerConnectHandler {

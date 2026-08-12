@@ -8,7 +8,6 @@
     android:fillViewport="true"
     android:background="@color/md_theme_dark_primary">
 
-    <!-- Menggunakan layout_gravity="center" dan gravity="center" agar tepat di tengah layar (vertikal & horizontal) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -32,13 +31,13 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@color/md_theme_dark_primary"
-                android:padding="20dp"
+                android:padding="24dp"
                 android:gravity="center_horizontal">
 
                 <!-- Logo Aplikasi -->
                 <ImageView
-                    android:layout_width="80dp"
-                    android:layout_height="80dp"
+                    android:layout_width="76dp"
+                    android:layout_height="76dp"
                     android:scaleType="fitCenter"
                     app:srcCompat="@drawable/tik_polri" />
 
@@ -46,62 +45,36 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="8dp"
                     android:fontFamily="sans-serif-medium"
                     android:text="BID TIK POLDA BALI"
                     android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="20sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <!-- Deskripsi Singkat -->
+                <!-- Subjudul / Keterangan Aplikasi ROIP -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:layout_marginBottom="30dp"
                     android:fontFamily="sans-serif"
-                    android:text="Silahkan Pilih Daftar Server"
+                    android:text="APLIKASI ROIP"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="13sp" />
+                    android:textSize="12sp"
+                    android:letterSpacing="0.05" />
 
-                <!-- Header Saved Servers & Tombol Add Server -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
-                    android:layout_marginBottom="22dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:fontFamily="sans-serif-medium"
-                        android:text="DAFTAR SERVER"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/menu_add_server_text"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-medium"
-                        android:text="+ Add Server"
-                        android:textColor="#ff2079ab"
-                        android:textSize="13sp" />
-                </LinearLayout>
-
-                <!-- GridView untuk List Server -->
+                <!-- GridView yang sekarang memuat form login instan dari server_list_row -->
                 <GridView
                     android:id="@+id/server_list_grid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:numColumns="1"
                     android:horizontalSpacing="0dp"
-                    android:verticalSpacing="2dp"
+                    android:verticalSpacing="0dp"
                     android:scrollbars="none" />
 
-                <!-- Tampilan Kosong (Empty View) -->
+                <!-- Tampilan Kosong (Empty View) jika diperlukan -->
                 <TextView
                     android:id="@+id/server_list_grid_empty"
                     android:layout_width="match_parent"
@@ -117,12 +90,12 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="24dp"
                     android:fontFamily="sans-serif"
                     android:gravity="center"
                     android:text="Aplikasi Mumble yang dikembangkan oleh Tim Teknis BID TIK Polda Bali"
                     android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="13sp" />
+                    android:textSize="11sp" />
 
             </LinearLayout>
         </androidx.cardview.widget.CardView>

@@ -18,21 +18,19 @@
 package se.lublin.mumla.servers;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.ProgressBar;
-import android.widget.TextView;
 
 import androidx.appcompat.widget.PopupMenu;
 
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import se.lublin.humla.model.Server;
 import se.lublin.mumla.R;
@@ -41,10 +39,6 @@ import se.lublin.mumla.R;
  * Created by andrew on 05/05/14.
  */
 public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
-    private static final int MAX_ACTIVE_PINGS = 50;
-
-    private ConcurrentHashMap<Server, ServerInfoResponse> mInfoResponses = new ConcurrentHashMap<Server, ServerInfoResponse>();
-    private ExecutorService mPingExecutor = Executors.newFixedThreadPool(MAX_ACTIVE_PINGS);
     private int mViewResource;
 
     public ServerAdapter(Context context, int viewResource, List<E> servers) {
@@ -68,67 +62,101 @@ public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
 
         final E server = getItem(position);
 
-        ServerInfoResponse infoResponse = mInfoResponses.get(server);
-        // If there is a null value for the server info (rather than none at all), the request must have failed.
-        boolean requestExists = infoResponse != null;
-        boolean requestFailure = infoResponse != null && infoResponse.isDummy();
+        // Ambil komponen form login dari server_list_row.xml yang baru
+        final EditText etUsername = view.findViewById(R.id.server_row_edit_username);
+        final EditText etPassword = view.findViewById(R.id.server_row_edit_password);
+        final ImageView btnTogglePass = view.findViewById(R.id.btn_row_toggle_password);
+        final Button btnConnect = view.findViewById(R.id.btn_row_connect);
 
-        TextView nameText = (TextView) view.findViewById(R.id.server_row_name);
-        TextView userText = (TextView) view.findViewById(R.id.server_row_user);
-        TextView addressText = (TextView) view.findViewById(R.id.server_row_address);
+        // Muat data yang pernah tersimpan sebelumnya menggunakan SharedPreferences (MumbleUserSession & RoipLoginPrefs)
+        SharedPreferences prefsLogin = getContext().getSharedPreferences("RoipLoginPrefs", Context.MODE_PRIVATE);
+        SharedPreferences prefsSession = getContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
 
-        addressText.setVisibility(View.GONE);
+        String savedUsername = prefsLogin.getString("saved_username", server != null ? server.getUsername() : "");
+        String savedPassword = prefsSession.getString("saved_ci4_password", prefsLogin.getString("saved_password", ""));
 
-        nameText.setText(server.getName());
-
-        if(userText != null) userText.setText(server.getUsername());
-        if (addressText != null) {
-            addressText.setText(server.getHost());
+        if (etUsername != null && etUsername.getText().toString().isEmpty()) {
+            etUsername.setText(savedUsername);
+        }
+        if (etPassword != null && etPassword.getText().toString().isEmpty()) {
+            etPassword.setText(savedPassword);
         }
 
-        final ImageView moreButton = (ImageView) view.findViewById(R.id.server_row_more);
-        if(moreButton != null) {
-            moreButton.setOnClickListener(new View.OnClickListener() {
+        // Set default awal password disamarkan menjadi titik-titik
+        if (etPassword != null) {
+            etPassword.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+        }
+
+        // Fitur Tombol Mata (Show/Hide Password)
+        if (btnTogglePass != null && etPassword != null) {
+            final boolean[] isPasswordVisible = {false};
+            btnTogglePass.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    onServerOptionsClick(server, moreButton);
+                    int cursorPos = etPassword.getSelectionStart();
+                    if (isPasswordVisible[0]) {
+                        // Sembunyikan password kembali
+                        etPassword.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+                        btnTogglePass.setImageResource(R.drawable.ic_visibility);
+                        isPasswordVisible[0] = false;
+                    } else {
+                        // Tampilkan password (buka mata)
+                        etPassword.setTransformationMethod(null);
+                        btnTogglePass.setImageResource(R.drawable.ic_visibility_off);
+                        isPasswordVisible[0] = true;
+                    }
+                    etPassword.setSelection(cursorPos);
                 }
             });
         }
 
-        TextView serverVersionText = (TextView) view.findViewById(R.id.server_row_version_status);
-        TextView serverLatencyText = (TextView) view.findViewById(R.id.server_row_latency);
-        TextView serverUsersText = (TextView) view.findViewById(R.id.server_row_usercount);
-        ProgressBar serverInfoProgressBar = (ProgressBar) view.findViewById(R.id.server_row_ping_progress);
+        // Aksi saat tombol Connect ditekan
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    String usernameStr = etUsername != null ? etUsername.getText().toString().trim() : "";
+                    String passwordStr = etPassword != null ? etPassword.getText().toString().trim() : "";
 
-        serverVersionText.setVisibility(!requestExists ? View.INVISIBLE : View.VISIBLE);
-        serverUsersText.setVisibility(!requestExists ? View.INVISIBLE : View.VISIBLE);
-        serverLatencyText.setVisibility(!requestExists ? View.INVISIBLE : View.VISIBLE);
-        serverInfoProgressBar.setVisibility(!requestExists ? View.VISIBLE : View.INVISIBLE);
+                    if (usernameStr.isEmpty()) {
+                        if (etUsername != null) {
+                            etUsername.setError("Username / NRP harus diisi!");
+                            etUsername.requestFocus();
+                        }
+                        return;
+                    }
 
-        if(infoResponse != null && !requestFailure) {
-            serverVersionText.setText(getContext().getString(R.string.online)+" ("+infoResponse.getVersionString()+")");
-            serverUsersText.setText(infoResponse.getCurrentUsers()+"/"+infoResponse.getMaximumUsers());
-            serverLatencyText.setText(infoResponse.getLatency()+"ms");
-        } else if(requestFailure) {
-            serverVersionText.setText(R.string.offline);
-            serverUsersText.setText("");
-            serverLatencyText.setText("");
-        }
+                    // Simpan data otomatis ke SharedPreferences agar sinkron dengan MumlaActivity dan sesi login berikutnya
+                    Context appCtx = getContext().getApplicationContext();
 
-        // Ping server if available
-        if(infoResponse == null) {
-            ServerInfoTask task = new ServerInfoTask() {
-                protected void onPostExecute(ServerInfoResponse result) {
-                    super.onPostExecute(result);
-                    mInfoResponses.put(server, result);
-                    notifyDataSetChanged();
+                    appCtx.getSharedPreferences("RoipLoginPrefs", Context.MODE_PRIVATE).edit()
+                            .putString("saved_username", usernameStr)
+                            .putString("saved_password", passwordStr)
+                            .apply();
+
+                    appCtx.getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE).edit()
+                            .putString("saved_username", usernameStr)
+                            .putString("saved_ci4_password", passwordStr)
+                            .apply();
+
+                    // Perbarui data server sebelum terhubung
+                    if (server != null) {
+                        server.setUsername(usernameStr);
+                        server.setPassword(passwordStr);
+                    }
+
+                    // Panggil fungsi klik server bawaan adapter untuk melanjutkan proses koneksi ke MumlaActivity
+                    onServerConnectClick(server);
                 }
-            };
-            task.executeOnExecutor(mPingExecutor, server);
+            });
         }
 
         return view;
+    }
+
+    // Method bantuan untuk menangani aksi koneksi yang dapat diimplementasikan di Fragment/Activity
+    public void onServerConnectClick(Server server) {
+        // Bisa dioverride atau disesuaikan dengan fungsi koneksi utama Mumla Activity Anda
     }
 
     private void onServerOptionsClick(final Server server, View optionsButton) {

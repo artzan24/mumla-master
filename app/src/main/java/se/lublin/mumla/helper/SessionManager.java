@@ -1,4 +1,4 @@
-package se.lublin.mumla.model;
+package se.lublin.mumla.helper;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -6,6 +6,9 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.lang.reflect.Type;
 import java.util.List;
+
+import se.lublin.mumla.model.Channel;
+import se.lublin.mumla.model.Profile;
 
 public class SessionManager {
     // Nama file SharedPreferences untuk penyimpanan lokal aplikasi

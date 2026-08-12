@@ -362,6 +362,17 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
         return -1;
     }
 
+    public void updateAllowedChannelsAndRefresh(String allowedChannelsCsv) {
+        // 1. Simpan ke SharedPreferences agar sesuai dengan data terbaru CI4
+        if (mContext != null) {
+            SharedPreferences prefs = mContext.getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            prefs.edit().putString("allowed_channels", allowedChannelsCsv).apply();
+        }
+
+        // 2. Panggil ulang updateChannels() untuk membangun ulang pohon node berdasarkan izin baru
+        updateChannels();
+    }
+
     public void updateChannels() {
         if (mService == null || !mService.isConnected()) {
             return;

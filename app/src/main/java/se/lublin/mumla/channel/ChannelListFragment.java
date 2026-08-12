@@ -194,9 +194,27 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         return view;
     }
 
+    private final BroadcastReceiver mChannelUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if ("ACTION_UPDATE_CHANNELS".equals(intent.getAction())) {
+                if (mChannelListAdapter != null) {
+                    mChannelListAdapter.updateChannels();
+                    mChannelListAdapter.notifyDataSetChanged();
+                }
+            }
+        }
+    };
+
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
+        IntentFilter channelFilter = new IntentFilter("ACTION_UPDATE_CHANNELS");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getActivity().registerReceiver(mChannelUpdateReceiver, channelFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            getActivity().registerReceiver(mChannelUpdateReceiver, channelFilter);
+        }
         //registerForContextMenu(mChannelView);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             getActivity().registerReceiver(mBluetoothReceiver, new IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_CHANGED), RECEIVER_NOT_EXPORTED);
@@ -214,6 +232,12 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     @Override
     public void onDestroy() {
         super.onDestroy();
+        try {
+            getActivity().unregisterReceiver(mChannelUpdateReceiver);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getActivity());
         preferences.unregisterOnSharedPreferenceChangeListener(this);
     }
@@ -350,6 +374,33 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
                         mChannelListAdapter.filter("", mEmptyView);
                     }
                     return true;
+                }
+            });
+        }
+    }
+
+    /**
+     * Memperbarui daftar channel yang diizinkan secara live tanpa disconnect,
+     * lalu menyegarkan tampilan list channel di Android seketika.
+     */
+    /**
+     * Memperbarui daftar channel yang diizinkan secara live tanpa disconnect,
+     * lalu menyegarkan tampilan list channel di Android seketika.
+     */
+    public void updateAllowedChannels(String allowedChannelsCsv) {
+        if (getActivity() != null) {
+            SharedPreferences prefs = getActivity().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            prefs.edit().putString("allowed_channels", allowedChannelsCsv).apply();
+        }
+
+        // PANGGIL FUNGSI UPDATE DI ADAPTER AGAR LIST-NYA IKUT TER-FILTER/REFRESH
+        if (mChannelListAdapter != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    // Panggil fungsi internal adapter untuk memuat ulang data dari SharedPreferences & refresh UI
+                    mChannelListAdapter.updateChannels();
+                    mChannelListAdapter.notifyDataSetChanged();
                 }
             });
         }

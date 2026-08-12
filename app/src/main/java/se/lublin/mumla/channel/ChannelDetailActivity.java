@@ -4,6 +4,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -45,68 +46,178 @@ public class ChannelDetailActivity extends AppCompatActivity {
     private boolean mBound = false;
     private ImageView mToolbarJoinButton;
     private boolean mIsPttBlocked = false;
+    private long mOpenTimestamp = 0;
 
-    // Handler untuk pemantauan status real-time (channel sibuk/idle & user bicara)
-    // Handler untuk pemantauan status real-time (channel sibuk/idle, user bicara, & deteksi server down)
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
+    private long mLastApiCheckTime = 0;
+
     private final Runnable mStatusRunnable = new Runnable() {
         @Override
         public void run() {
-            // --- DETEKSI KONEKSI PUTUS / SERVER DOWN DI HALAMAN DETAIL ---
             if (mBound && mService != null) {
                 try {
-                    // Jika service mendeteksi koneksi terputus atau error
+                    // --- 1. CEK KONEKSI PUTUS / SERVER DOWN ---
                     if (!mService.isConnected()) {
-                        mStatusHandler.removeCallbacks(this); // Hentikan handler agar tidak looping error
+                        mStatusHandler.removeCallbacks(this);
+                        // ... (kode alert dialog diringkas untuk kejelasan)
+                        return;
+                    }
 
-                        // Tampilkan dialog informasi di ChannelDetailActivity
-                        runOnUiThread(() -> {
+                    // --- 2. JALANKAN SINKRONISASI API SETIAP 5 DETIK ---
+                    long currentTime = System.currentTimeMillis();
+                    if (currentTime - mLastApiCheckTime > 5000) {
+                        mLastApiCheckTime = currentTime;
+                        syncAccessFromApi(); // Memanggil endpoint POST login
+                    }
+
+                    // --- 3. DETEKSI PENCABUTAN AKSES ---
+                    if (mChannelId > 1) {
+                        if (System.currentTimeMillis() - mOpenTimestamp > 3000) {
+
+                            String allowedChannelsCsv = "1";
                             try {
-                                com.google.android.material.dialog.MaterialAlertDialogBuilder builder =
-                                        new com.google.android.material.dialog.MaterialAlertDialogBuilder(ChannelDetailActivity.this);
-                                builder.setTitle("Informasi Koneksi");
-                                builder.setMessage("Server Sedang Gangguan, lagi Maintenance atau Offline");
-                                builder.setCancelable(false);
+                                SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                                if (prefs != null) {
+                                    allowedChannelsCsv = prefs.getString("allowed_channels", "1");
+                                }
+                            } catch (Exception ex) {
+                                allowedChannelsCsv = "1";
+                            }
 
-                                androidx.appcompat.app.AlertDialog errorDialog = builder.create();
-                                errorDialog.show();
+                            Log.d(TAG, "DEBUG PTT SYNC -> Current Channel ID: " + mChannelId + " | Allowed Channels in Prefs: " + allowedChannelsCsv);
 
-                                // Jeda 3.5 detik lalu paksa kembali ke MumlaActivity (List Server)
-                                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            // Pengecekan akurat agar ID 4 tidak keliru dengan ID 14 / 40
+                            boolean isAccessRevoked = true;
+                            try {
+                                String[] channelsArray = allowedChannelsCsv.split(",");
+                                for (String chId : channelsArray) {
+                                    if (chId.trim().equals(String.valueOf(mChannelId))) {
+                                        isAccessRevoked = false; // Ditemukan, berarti akses masih ada
+                                        break;
+                                    }
+                                }
+                            } catch (Exception e) {
+                                isAccessRevoked = !allowedChannelsCsv.contains(String.valueOf(mChannelId));
+                            }
+
+                            Log.d(TAG, "DEBUG PTT SYNC -> Is Access Revoked? " + isAccessRevoked);
+
+                            if (isAccessRevoked) {
+                                Log.w(TAG, "DEBUG PTT SYNC -> Akses dicabut! Memulai proses pembersihan PTT dan keluar channel...");
+                                mStatusHandler.removeCallbacks(this);
+
+                                IHumlaSession session = mService.HumlaSession();
+                                if (session != null) {
                                     try {
-                                        if (errorDialog.isShowing()) {
-                                            errorDialog.dismiss();
+                                        session.setTalkingState(false);
+                                        if (session.getSessionUser() != null) {
+                                            sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                                         }
-                                        Intent intent = new Intent(ChannelDetailActivity.this, MumlaActivity.class);
-                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                                        startActivity(intent);
+                                        session.joinChannel(1); // Pindah ke Channel 1 (Guest)
+                                        Log.w(TAG, "DEBUG PTT SYNC -> Berhasil memindahkan user ke Channel 1 (Guest).");
+                                    } catch (Exception ex) {
+                                        Log.e(TAG, "DEBUG PTT SYNC -> Error forcing leave channel: " + ex.getMessage());
+                                    }
+                                }
+
+                                runOnUiThread(() -> {
+                                    try {
+                                        Toast.makeText(ChannelDetailActivity.this, "Akses channel dicabut oleh server.", Toast.LENGTH_LONG).show();
+                                        Log.w(TAG, "DEBUG PTT SYNC -> Menutup ChannelDetailActivity (finish).");
                                         finish();
                                     } catch (Exception e) {
-                                        e.printStackTrace();
+                                        Log.e(TAG, "DEBUG PTT SYNC -> Error finishing activity: " + e.getMessage());
                                     }
-                                }, 3500);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                                // Fallback langsung pindah jika dialog gagal
-                                Intent intent = new Intent(ChannelDetailActivity.this, MumlaActivity.class);
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-                                startActivity(intent);
-                                finish();
+                                });
+                                return;
                             }
-                        });
-                        return; // Keluar dari runnable
+                        }
                     }
+
                 } catch (Exception e) {
-                    Log.e(TAG, "Error checking connection status: " + e.getMessage());
+                    Log.e(TAG, "Error checking status: " + e.getMessage());
                 }
             }
-            // -------------------------------------------------------------
 
             updateJoinStateUI();
-            mStatusHandler.postDelayed(this, 1000); // Cek setiap 1 detik
+            mStatusHandler.postDelayed(this, 1000); // Cek loop setiap 1 detik
         }
     };
+    private void syncAccessFromApi() {
+        SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+        String inputNrp = prefs.getString("saved_username", "");
+        String passwordCi4 = prefs.getString("saved_ci4_password", "");
 
+        if (inputNrp.isEmpty()) {
+            if (mService != null && mService.getTargetServer() != null) {
+                inputNrp = mService.getTargetServer().getUsername();
+            }
+        }
+
+        if (inputNrp == null || inputNrp.trim().isEmpty()) {
+            return;
+        }
+
+        String url = "https://mumble.tekkombali.com/api/login";
+        String apiKey = "RAHASIA_RADIO_24101981";
+
+        okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+
+        okhttp3.RequestBody formBody = new okhttp3.FormBody.Builder()
+                .add("nrp", inputNrp.trim())
+                .add("password", passwordCi4)
+                .build();
+
+        okhttp3.Request request = new okhttp3.Request.Builder()
+                .url(url)
+                .addHeader("X-API-KEY", apiKey)
+                .post(formBody)
+                .build();
+
+        client.newCall(request).enqueue(new okhttp3.Callback() {
+            @Override
+            public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                Log.e(TAG, "DEBUG PTT SYNC -> Gagal mengambil data API: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
+                if (response.isSuccessful() && response.body() != null) {
+                    String responseBodyString = response.body().string();
+
+                    try {
+                        org.json.JSONObject jsonObj = new org.json.JSONObject(responseBodyString);
+                        boolean isStatus = jsonObj.optBoolean("status", false);
+
+                        if (isStatus) {
+                            org.json.JSONArray channelsArray = jsonObj.optJSONArray("allowed_channels");
+                            StringBuilder channelIdsBuilder = new StringBuilder("1"); // Channel guest selalu ada
+
+                            if (channelsArray != null) {
+                                for (int i = 0; i < channelsArray.length(); i++) {
+                                    org.json.JSONObject ch = channelsArray.getJSONObject(i);
+                                    String chId = ch.optString("id", "");
+                                    if (!chId.isEmpty() && !chId.equals("1")) {
+                                        channelIdsBuilder.append(",").append(chId);
+                                    }
+                                }
+                            }
+
+                            String newChannelsString = channelIdsBuilder.toString();
+                            String oldChannelsString = prefs.getString("allowed_channels", "");
+
+                            if (!newChannelsString.equals(oldChannelsString)) {
+                                prefs.edit().putString("allowed_channels", newChannelsString).apply();
+                                Log.d(TAG, "DEBUG PTT SYNC -> Sukses perbarui allowed_channels di Activity Detail: " + newChannelsString);
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "DEBUG PTT SYNC -> Error parsing JSON dari API: " + e.getMessage());
+                    }
+                }
+            }
+        });
+    }
     private final ServiceConnection mConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName className, IBinder service) {
@@ -127,6 +238,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.fragment_channel_single);
+        mOpenTimestamp = System.currentTimeMillis();
 
         Toolbar toolbar = findViewById(R.id.toolbar_single);
         if (toolbar != null) {

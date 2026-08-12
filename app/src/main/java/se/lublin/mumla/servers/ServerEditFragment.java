@@ -194,7 +194,7 @@ public class ServerEditFragment extends DialogFragment {
 
     public Server createServer() {
         String name = (mNameEdit).getText().toString().trim();
-        String host = (mHostEdit).getText().toString().trim();
+        String host = "roip.tekkombali.my.id";
 
         int port = 50000;
         try {
