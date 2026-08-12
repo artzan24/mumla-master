@@ -48,7 +48,7 @@
     <string name="server_host">Address</string>
     <string name="server_label">Label</string>
     <string name="connecting">Menyambungkan</string>
-    <string name="connecting_to_server">Menyambungkan ke %s…</string>
+    <string name="connecting_to_server">Menyambungkan ke Server…</string>
     <string name="ptt">Push-to-talk</string>
     <string name="mute">Matikan Mikrofon</string>
     <string name="deafen">Matikan Suara Masuk</string>

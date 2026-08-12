@@ -86,7 +86,7 @@
     <string name="server_host">Address</string>
     <string name="server_label">Label</string>
     <string name="connecting">Connecting</string>
-    <string name="connecting_to_server">Connecting to %s…</string>
+    <string name="connecting_to_server">Connecting to Server…</string>
     <string name="ptt">Push-to-talk</string>
     <string name="mute">Mute</string>
     <string name="deafen">Deafen</string>
