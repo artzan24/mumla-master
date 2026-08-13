@@ -62,6 +62,7 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
 import se.lublin.mumla.db.DatabaseProvider;
 import se.lublin.mumla.util.HumlaServiceFragment;
+import androidx.core.content.ContextCompat;
 
 public class ChannelListFragment extends HumlaServiceFragment implements OnChannelClickListener, OnUserClickListener, SharedPreferences.OnSharedPreferenceChangeListener {
     private static final String TAG = ChannelListFragment.class.getName();
@@ -209,17 +210,24 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
+
         IntentFilter channelFilter = new IntentFilter("ACTION_UPDATE_CHANNELS");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            getActivity().registerReceiver(mChannelUpdateReceiver, channelFilter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            getActivity().registerReceiver(mChannelUpdateReceiver, channelFilter);
-        }
-        //registerForContextMenu(mChannelView);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            getActivity().registerReceiver(mBluetoothReceiver, new IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_CHANGED), RECEIVER_NOT_EXPORTED);
-        } else {
-            getActivity().registerReceiver(mBluetoothReceiver, new IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_CHANGED));
+
+        // Gunakan ContextCompat agar kompatibel untuk semua versi SDK
+        if (getActivity() != null) {
+            ContextCompat.registerReceiver(
+                    getActivity(),
+                    mChannelUpdateReceiver,
+                    channelFilter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+            );
+
+            ContextCompat.registerReceiver(
+                    getActivity(),
+                    mBluetoothReceiver,
+                    new IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_CHANGED),
+                    ContextCompat.RECEIVER_NOT_EXPORTED
+            );
         }
     }
 

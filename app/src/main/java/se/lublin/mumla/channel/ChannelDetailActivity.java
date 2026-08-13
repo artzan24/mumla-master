@@ -143,6 +143,9 @@ public class ChannelDetailActivity extends AppCompatActivity {
             mStatusHandler.postDelayed(this, 1000); // Cek loop setiap 1 detik
         }
     };
+    // ==========================================
+    // SINKRONISASI DAN PENGECEKAN AKUN NON-AKTIF
+    // ==========================================
     private void syncAccessFromApi() {
         SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
         String inputNrp = prefs.getString("saved_username", "");
@@ -182,39 +185,103 @@ public class ChannelDetailActivity extends AppCompatActivity {
 
             @Override
             public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
-                if (response.isSuccessful() && response.body() != null) {
-                    String responseBodyString = response.body().string();
+                String responseBodyString = response.body() != null ? response.body().string() : "";
 
+                // A. PENGECEKAN JIKA STATUS HTTP 401 UNAUTHORIZED (AKUN DEACTIVATED/PASSWORD SALAH)
+                if (response.code() == 401 || !response.isSuccessful()) {
+                    String errorMsg = "Sesi berakhir atau akun Anda telah dinonaktifkan.";
                     try {
-                        org.json.JSONObject jsonObj = new org.json.JSONObject(responseBodyString);
-                        boolean isStatus = jsonObj.optBoolean("status", false);
-
-                        if (isStatus) {
-                            org.json.JSONArray channelsArray = jsonObj.optJSONArray("allowed_channels");
-                            StringBuilder channelIdsBuilder = new StringBuilder("1"); // Channel guest selalu ada
-
-                            if (channelsArray != null) {
-                                for (int i = 0; i < channelsArray.length(); i++) {
-                                    org.json.JSONObject ch = channelsArray.getJSONObject(i);
-                                    String chId = ch.optString("id", "");
-                                    if (!chId.isEmpty() && !chId.equals("1")) {
-                                        channelIdsBuilder.append(",").append(chId);
-                                    }
-                                }
-                            }
-
-                            String newChannelsString = channelIdsBuilder.toString();
-                            String oldChannelsString = prefs.getString("allowed_channels", "");
-
-                            if (!newChannelsString.equals(oldChannelsString)) {
-                                prefs.edit().putString("allowed_channels", newChannelsString).apply();
-                                Log.d(TAG, "DEBUG PTT SYNC -> Sukses perbarui allowed_channels di Activity Detail: " + newChannelsString);
+                        org.json.JSONObject jsonErr = new org.json.JSONObject(responseBodyString);
+                        if (jsonErr.has("messages")) {
+                            org.json.JSONObject messages = jsonErr.getJSONObject("messages");
+                            if (messages.has("error")) {
+                                errorMsg = messages.getString("error");
                             }
                         }
-                    } catch (Exception e) {
-                        Log.e(TAG, "DEBUG PTT SYNC -> Error parsing JSON dari API: " + e.getMessage());
-                    }
+                    } catch (Exception ignored) {}
+
+                    forceLogoutUser(errorMsg);
+                    return;
                 }
+
+                // B. JIKA HTTP RESPONSE SUCCESS (200 OK)
+                try {
+                    org.json.JSONObject jsonObj = new org.json.JSONObject(responseBodyString);
+                    boolean isStatus = jsonObj.optBoolean("status", false);
+
+                    if (isStatus) {
+                        org.json.JSONArray channelsArray = jsonObj.optJSONArray("allowed_channels");
+                        StringBuilder channelIdsBuilder = new StringBuilder("1"); // Channel guest selalu ada
+
+                        if (channelsArray != null) {
+                            for (int i = 0; i < channelsArray.length(); i++) {
+                                org.json.JSONObject ch = channelsArray.getJSONObject(i);
+                                String chId = ch.optString("id", "");
+                                if (!chId.isEmpty() && !chId.equals("1")) {
+                                    channelIdsBuilder.append(",").append(chId);
+                                }
+                            }
+                        }
+
+                        String newChannelsString = channelIdsBuilder.toString();
+                        String oldChannelsString = prefs.getString("allowed_channels", "");
+
+                        if (!newChannelsString.equals(oldChannelsString)) {
+                            prefs.edit().putString("allowed_channels", newChannelsString).apply();
+                            Log.d(TAG, "DEBUG PTT SYNC -> Sukses perbarui allowed_channels di Activity Detail: " + newChannelsString);
+                        }
+                    } else {
+                        // C. JIKA JSON 'status' BERNILAI FALSE
+                        String message = jsonObj.optString("message", "Akun Anda tidak aktif.");
+                        forceLogoutUser(message);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "DEBUG PTT SYNC -> Error parsing JSON dari API: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
+     * Method untuk memutus koneksi Mumble, membersihkan sesi,
+     * dan mengembalikan user langsung ke List Server (MumlaActivity).
+     */
+    private void forceLogoutUser(String reasonMessage) {
+        runOnUiThread(() -> {
+            // 1. Beritahu user via Toast
+            Toast.makeText(ChannelDetailActivity.this, reasonMessage, Toast.LENGTH_LONG).show();
+
+            // 2. Putus koneksi radio Mumble
+            if (mService != null && mService.isConnected()) {
+                try {
+                    mService.disconnect();
+                } catch (Exception e) {
+                    Log.e(TAG, "Gagal disconnect: " + e.getMessage());
+                }
+            }
+
+            // 3. Hapus semua data session login
+            SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            prefs.edit().clear().apply();
+
+            try {
+                se.lublin.mumla.helper.SessionManager sessionManager = new se.lublin.mumla.helper.SessionManager(getApplicationContext());
+                sessionManager.logoutUser();
+            } catch (Exception e) {
+                Log.e(TAG, "Gagal logout session: " + e.getMessage());
+            }
+
+            // 4. Buka MumlaActivity dengan perintah langsung ke FavouriteServerListFragment
+            try {
+                Intent intent = new Intent(ChannelDetailActivity.this, se.lublin.mumla.app.MumlaActivity.class);
+                // Tandai agar MumlaActivity me-bypass splash screen dan langsung merender Server List
+                intent.putExtra("EXTRA_SHOW_SERVER_LIST", true);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+
+                startActivity(intent);
+                finish();
+            } catch (Exception e) {
+                Log.e(TAG, "Gagal kembali ke List Server: " + e.getMessage());
             }
         });
     }

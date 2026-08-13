@@ -35,6 +35,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -65,6 +66,7 @@ import androidx.preference.PreferenceManager;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import org.jetbrains.annotations.NotNull;
+import org.json.JSONObject;
 
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
@@ -113,6 +115,8 @@ import se.lublin.humla.IHumlaService;
 import android.util.Log;
 import android.widget.Toast;
 import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
+
 import java.io.IOException;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -273,9 +277,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         // Maka paksa kembalikan ke SplashActivity!
         boolean isRestartedBySystem = (savedInstanceState != null);
         boolean isFromSplash = getIntent().getBooleanExtra("from_splash", false);
+        boolean isFromLogout = getIntent().getBooleanExtra("EXTRA_SHOW_SERVER_LIST", false);
         boolean isActionView = Intent.ACTION_VIEW.equals(getIntent().getAction());
 
-        if ((isRestartedBySystem || !isFromSplash) && !isActionView) {
+        // Tambahkan !isFromLogout agar TIDAK dilempar ke SplashActivity jika dipanggil dari Logout
+        if ((isRestartedBySystem || (!isFromSplash && !isFromLogout)) && !isActionView) {
             // Hapus flag intent agar tidak berulang
             getIntent().removeExtra("from_splash");
 
@@ -294,7 +300,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if (getSupportFragmentManager().findFragmentById(R.id.content_frame) == null) {
+        // Jika dipanggil dari logout paksa, langsung muat FavouriteServerListFragment
+        if (isFromLogout) {
+            getIntent().removeExtra("EXTRA_SHOW_SERVER_LIST");
+            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+        } else if (getSupportFragmentManager().findFragmentById(R.id.content_frame) == null) {
             loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
         }
 
@@ -441,12 +451,29 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     @Override
     protected void onResume() {
         super.onResume();
+
+        // =========================================================================
+        // 0. CEK JIKA DIPANGGIL DARI LOGOUT PAKSA (ChannelDetailActivity)
+        // =========================================================================
+        if (getIntent() != null && getIntent().getBooleanExtra("EXTRA_SHOW_SERVER_LIST", false)) {
+            // Hapus extra agar tidak terus terpicu pada resume normal berikutnya
+            getIntent().removeExtra("EXTRA_SHOW_SERVER_LIST");
+
+            try {
+                // Langsung timpa fragment ke FavouriteServerListFragment (List Server)
+                getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.content_frame, new se.lublin.mumla.servers.FavouriteServerListFragment())
+                        .commitAllowingStateLoss();
+            } catch (Exception e) {
+                Log.e("MumlaActivity", "Gagal mengganti ke ServerList: " + e.getMessage());
+            }
+        }
+        // =========================================================================
+
         Intent connectIntent = new Intent(this, MumlaService.class);
         bindService(connectIntent, mConnection, 0);
 
-        // ==========================================
         // 1. REFRESH LANGSUNG SAAT RESUME / DARI SPLASH
-        // ==========================================
         if (mService != null && mService.isConnected()) {
             fetchAllowedChannelsFromApi();
         }
@@ -455,7 +482,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         if (mChannelSyncHandler != null && mChannelSyncRunnable != null) {
             mChannelSyncHandler.postDelayed(mChannelSyncRunnable, 30000);
         }
-        // ==========================================
 
         if (mDrawerLayout != null) {
             mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
@@ -1030,7 +1056,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             case CONNECTING:
                 Server server = service.getTargetServer();
                 mConnectingDialog = new MaterialAlertDialogBuilder(this)
-                        .setTitle(getString(R.string.connecting_to_server, server.getHost()) + (mSettings.isTorEnabled() ? " (Tor)" : ""))
+                        .setTitle(getString(R.string.connecting_to_server) + (mSettings.isTorEnabled() ? " (Tor)" : ""))
                         .setView(R.layout.dialog_progress)
                         .setCancelable(true)
                         .setOnCancelListener(dialog -> {
@@ -1111,10 +1137,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         String inputNrp = prefs.getString("saved_username", "");
         String passwordCi4 = prefs.getString("saved_ci4_password", "");
 
-        if (inputNrp.isEmpty()) {
-            if (mService != null && mService.getTargetServer() != null) {
-                inputNrp = mService.getTargetServer().getUsername();
-            }
+        if (inputNrp.isEmpty() && mService != null && mService.getTargetServer() != null) {
+            inputNrp = mService.getTargetServer().getUsername();
         }
 
         if (inputNrp == null || inputNrp.trim().isEmpty()) {
@@ -1145,83 +1169,148 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if (response.isSuccessful() && response.body() != null) {
-                    String responseBodyString = response.body().string();
+                String responseBodyString = response.body() != null ? response.body().string() : "";
 
+                // A. JIKA HTTP RESPONSE MENUNJUKKAN 401 (UNAUTHORIZED / TIDAK AKTIF)
+                if (response.code() == 401 || !response.isSuccessful()) {
+                    String errorMsg = "Sesi berakhir atau akun Anda telah dinonaktifkan.";
                     try {
-                        Gson gson = new Gson();
-                        LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
-
-                        if (loginData != null && loginData.isStatus()) {
-                            List<Channel> channelObjects = loginData.getAllowed_channels();
-                            StringBuilder channelIdsBuilder = new StringBuilder("1");
-
-                            if (channelObjects != null) {
-                                for (Channel ch : channelObjects) {
-                                    int channelId = Integer.parseInt(ch.getId());
-                                    if (channelId != 1) {
-                                        channelIdsBuilder.append(",").append(channelId);
-                                    }
-                                }
-                            }
-
-                            String newChannelsString = channelIdsBuilder.toString();
-                            String oldChannelsString = prefs.getString("allowed_channels", "");
-
-                            if (!newChannelsString.equals(oldChannelsString)) {
-                                prefs.edit().putString("allowed_channels", newChannelsString).apply();
-
-                                // 1. KIRIM BROADCAST UNTUK REFRESH UI LIST CHANNEL
-                                Intent updateIntent = new Intent("ACTION_UPDATE_CHANNELS");
-                                sendBroadcast(updateIntent);
-
-                                // 2. CEK APAKAH USER SEDANG BERADA DI CHANNEL YANG DICABUT AKSESNYA
-                                if (mService != null && mService.isConnected()) {
-                                    try {
-                                        IHumlaSession session = mService.HumlaSession();
-                                        if (session != null && session.getSessionChannel() != null) {
-                                            int currentChannelId = session.getSessionChannel().getId();
-
-                                            // Jika user berada di luar Channel 1 dan channel tersebut sudah tidak ada di allowed_channels
-                                            if (currentChannelId != 1 && !newChannelsString.contains(String.valueOf(currentChannelId))) {
-
-                                                // PINDAHKAN PAKSA KEMBALI KE GUEST/ROOT CHANNEL (ID 1)
-                                                // Otomatis melepas PTT/transmisi suara karena keluar dari channel lama
-                                                session.joinChannel(1);
-
-                                                // BERITAHU USER MELALUI TOAST
-                                                runOnUiThread(() -> {
-                                                    Toast.makeText(MumlaActivity.this, "Akses channel dicabut. Anda dipindahkan ke Guest (Channel 1).", Toast.LENGTH_LONG).show();
-                                                });
-                                            }
-                                        }
-                                    } catch (Exception serviceErr) {
-                                        Log.e("MUMBLE_SYNC", "Error checking active channel: " + serviceErr.getMessage());
-                                    }
-                                }
-
-                                // 3. UPDATE FRAGMENT UI SEPERTI BIASA
-                                runOnUiThread(() -> {
-                                    try {
-                                        Fragment currentFragment = getSupportFragmentManager().findFragmentByTag(ChannelFragment.class.getName());
-                                        if (currentFragment instanceof ChannelFragment) {
-                                            ChannelListFragment channelListFragment = (ChannelListFragment)
-                                                    getSupportFragmentManager().findFragmentByTag(ChannelListFragment.class.getName());
-
-                                            if (channelListFragment != null) {
-                                                channelListFragment.updateAllowedChannels(newChannelsString);
-                                            }
-                                        }
-                                    } catch (Exception err) {
-                                        Log.e("MUMBLE_SYNC", "Error updating UI fragment: " + err.getMessage());
-                                    }
-                                });
+                        JSONObject jsonErr = new JSONObject(responseBodyString);
+                        if (jsonErr.has("messages")) {
+                            JSONObject messages = jsonErr.getJSONObject("messages");
+                            if (messages.has("error")) {
+                                errorMsg = messages.getString("error");
                             }
                         }
-                    } catch (Exception e) {
-                        Log.e("MUMBLE_SYNC", "Parsing error: " + e.getMessage());
-                    }
+                    } catch (Exception ignored) {}
+
+                    forceLogoutUser(errorMsg);
+                    return;
                 }
+
+                // B. JIKA HTTP RESPONSE SUCCESS (200 OK)
+                try {
+                    Gson gson = new Gson();
+                    LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
+
+                    if (loginData != null && loginData.isStatus()) {
+                        List<Channel> channelObjects = loginData.getAllowed_channels();
+
+                        // Simpan sebagai List Integer untuk pengecekan presisi (menghindari bug "2" in "12")
+                        List<String> allowedIdList = new ArrayList<>();
+                        allowedIdList.add("1"); // Root / Guest selalu diizinkan
+
+                        if (channelObjects != null) {
+                            for (Channel ch : channelObjects) {
+                                if (!ch.getId().equals("1")) {
+                                    allowedIdList.add(ch.getId());
+                                }
+                            }
+                        }
+
+                        // Gabungkan menjadi string separated by comma
+                        String newChannelsString = TextUtils.join(",", allowedIdList);
+                        String oldChannelsString = prefs.getString("allowed_channels", "");
+
+                        // JIKA ADA PERUBAHAN DIBANDINGKAN DENGAN SESSION SEBELUMNYA
+                        if (!newChannelsString.equals(oldChannelsString)) {
+                            // Simpan string channel baru ke SharedPreferences
+                            prefs.edit().putString("allowed_channels", newChannelsString).apply();
+
+                            // 1. Kirim Broadcast (Adapter & Receiver lain yang mendengar akan ter-trigger)
+                            Intent updateIntent = new Intent("ACTION_UPDATE_CHANNELS");
+                            updateIntent.putExtra("allowed_channels", newChannelsString);
+                            sendBroadcast(updateIntent);
+
+                            // 2. Cek apakah user sedang berada di channel yang izinnya ditarik
+                            if (mService != null && mService.isConnected()) {
+                                try {
+                                    IHumlaSession session = mService.HumlaSession();
+                                    if (session != null && session.getSessionChannel() != null) {
+                                        int currentChannelId = session.getSessionChannel().getId();
+
+                                        // Pengecekan Presisi List (Mencegah false positive seperti id 2 match dengan 12)
+                                        if (currentChannelId != 1 && !allowedIdList.contains(String.valueOf(currentChannelId))) {
+                                            session.joinChannel(1);
+                                            runOnUiThread(() -> Toast.makeText(MumlaActivity.this, "Akses channel dicabut. Anda dipindahkan ke Guest.", Toast.LENGTH_LONG).show());
+                                        }
+                                    }
+                                } catch (Exception serviceErr) {
+                                    Log.e("MUMBLE_SYNC", "Error checking active channel: " + serviceErr.getMessage());
+                                }
+                            }
+
+                            // 3. Update Fragment UI secara Menyeluruh (Mencari di Active Fragments)
+                            runOnUiThread(() -> {
+                                try {
+                                    List<Fragment> fragments = getSupportFragmentManager().getFragments();
+                                    refreshChannelFragmentsRecursively(fragments, newChannelsString);
+                                } catch (Exception err) {
+                                    Log.e("MUMBLE_SYNC", "Error updating UI fragment: " + err.getMessage());
+                                }
+                            });
+                        }
+                    } else {
+                        forceLogoutUser("Akun tidak aktif.");
+                    }
+                } catch (Exception e) {
+                    Log.e("MUMBLE_SYNC", "Parsing error: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    /**
+     * Method Helper untuk mencari ChannelListFragment secara Rekursif
+     * di seluruh Fragment dan ChildFragment yang sedang aktif.
+     */
+    private void refreshChannelFragmentsRecursively(List<Fragment> fragments, String newChannelsString) {
+        if (fragments == null || fragments.isEmpty()) return;
+
+        for (Fragment fragment : fragments) {
+            if (fragment != null && fragment.isVisible()) {
+                if (fragment instanceof ChannelListFragment) {
+                    ((ChannelListFragment) fragment).updateAllowedChannels(newChannelsString);
+                }
+                // Jika fragment ini memiliki child fragments (misal ViewPager/TabLayout)
+                if (fragment.getChildFragmentManager() != null) {
+                    refreshChannelFragmentsRecursively(fragment.getChildFragmentManager().getFragments(), newChannelsString);
+                }
+            }
+        }
+    }
+
+    /**
+     * Method penendang otomatis ke halaman utama (FavouriteServerListFragment)
+     */
+    private void forceLogoutUser(String reasonMessage) {
+        runOnUiThread(() -> {
+            // 1. Beritahu user via Toast
+            Toast.makeText(MumlaActivity.this, reasonMessage, Toast.LENGTH_LONG).show();
+
+            // 2. Putus koneksi radio Mumble
+            if (mService != null && mService.isConnected()) {
+                try {
+                    mService.disconnect();
+                } catch (Exception e) {
+                    Log.e("MUMBLE_SYNC", "Gagal disconnect: " + e.getMessage());
+                }
+            }
+
+            // 3. Hapus semua data session login
+            SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+            prefs.edit().clear().apply();
+
+            SessionManager sessionManager = new SessionManager(getApplicationContext());
+            sessionManager.logoutUser();
+
+            // 4. Ganti Fragment utama langsung ke FavouriteServerListFragment (List Server)
+            try {
+                getSupportFragmentManager().beginTransaction()
+                        .replace(R.id.content_frame, new se.lublin.mumla.servers.FavouriteServerListFragment())
+                        .commitAllowingStateLoss();
+            } catch (Exception e) {
+                Log.e("MUMBLE_SYNC", "Gagal memuat List Server: " + e.getMessage());
             }
         });
     }
