@@ -84,6 +84,9 @@ public class MumlaService extends HumlaService implements
     public static final int PROXIMITY_SCREEN_OFF_WAKE_LOCK = 32;
     public static final int TTS_THRESHOLD = 250; // Maximum number of characters to read
     public static final int RECONNECT_DELAY = 10000;
+    private static final int BASE_RECONNECT_DELAY = 3000; // Mulai dari 3 detik
+    private static final int MAX_RECONNECT_DELAY = 60000;
+    private boolean mUserRequestedDisconnect = false;
 
     private Settings mSettings;
     private MumlaConnectionNotification mNotification;
@@ -147,6 +150,9 @@ public class MumlaService extends HumlaService implements
     private HumlaObserver mObserver = new HumlaObserver() {
         @Override
         public void onConnecting() {
+            // Tambahkan reset flag di sini juga agar bersih saat mulai connect
+            mUserRequestedDisconnect = false;
+
             if (mReconnectNotification != null) {
                 mReconnectNotification.hide();
                 mReconnectNotification = null;
@@ -160,7 +166,6 @@ public class MumlaService extends HumlaService implements
                         MumlaService.this);
                 mNotification.show();
             } catch (Exception e) {
-                // Menangkap ForegroundServiceStartNotAllowedException jika dipicu di background
                 Log.w(TAG, "Gagal memperbarui notifikasi koneksi di background: " + e.getMessage());
             }
 
@@ -200,8 +205,17 @@ public class MumlaService extends HumlaService implements
                 mNotification = null;
             }
 
+            // Jika ini murni karena user menolak/disconnect, jangan jalankan auto-reconnect
+            if (mUserRequestedDisconnect) {
+                Log.d(TAG, "🛑 Disconnect manual oleh user, mengabaikan auto-reconnect.");
+                return; // Langsung hentikan eksekusi di sini!
+            }
+
+            // Jika bukan karena user (misal jaringan putus), baru jalankan auto-reconnect
             triggerAutoReconnect(e);
         }
+
+        // (CATATAN: Method disconnect() telah DIHAPUS dari sini karena salah tempat)
 
         @Override
         public void onUserConnected(IUser user) {
@@ -332,7 +346,7 @@ public class MumlaService extends HumlaService implements
         }
 
         mIsRetryingConnection = true;
-        mReconnectAttempts = 0;
+        mReconnectAttempts = 0; // Reset ke 0 sebelum memulai loop backoff
 
         mReconnectHandler.post(new Runnable() {
             @Override
@@ -345,27 +359,30 @@ public class MumlaService extends HumlaService implements
                 }
 
                 if (mReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    // Logika Exponential Backoff: 3s, 6s, 12s, 24s, 48s, dst...
+                    long delay = (long) (BASE_RECONNECT_DELAY * Math.pow(2, mReconnectAttempts));
+                    if (delay > MAX_RECONNECT_DELAY) delay = MAX_RECONNECT_DELAY;
+
                     mReconnectAttempts++;
-                    Log.d(TAG, "🔄 Mencoba menghubungkan kembali (Percobaan " + mReconnectAttempts + "/" + MAX_RECONNECT_ATTEMPTS + ")...");
+                    Log.d(TAG, "🔄 Percobaan " + mReconnectAttempts + " - Menunggu " + (delay/1000) + " detik...");
 
                     try {
                         reconnect();
                     } catch (Throwable ex) {
-                        // Mencegah crash/error ForegroundServiceStartNotAllowedException di Android 12+
-                        Log.w(TAG, "Proses reconnect via socket (Background retry): " + ex.getMessage());
+                        Log.w(TAG, "Error saat mencoba reconnect: " + ex.getMessage());
                     }
 
-                    mReconnectHandler.postDelayed(this, RECONNECT_DELAY_MS);
+                    mReconnectHandler.postDelayed(this, delay);
                 } else {
-                    Log.e(TAG, "❌ Menyerah reconnect setelah " + MAX_RECONNECT_ATTEMPTS + " percobaan. Melepas WakeLock.");
+                    Log.e(TAG, "❌ Maksimal percobaan tercapai. Berhenti mencoba.");
                     mIsRetryingConnection = false;
                     releaseCpuWakeLock();
 
                     if (lastException != null && !mSuppressNotifications) {
                         mReconnectNotification = MumlaReconnectNotification.show(
                                 MumlaService.this,
-                                lastException.getMessage() + (mSettings.isTorEnabled() ? " (Tor)" : ""),
-                                isReconnecting(),
+                                lastException.getMessage(),
+                                false,
                                 MumlaService.this
                         );
                     }
@@ -565,6 +582,30 @@ public class MumlaService extends HumlaService implements
         } catch (Exception e) {
             Log.e(TAG, "Gagal kirim status offline: " + e.getMessage());
         }
+    }
+
+    @Override
+    public void disconnect() {
+        // 1. Tandai sebagai aksi manual
+        mUserRequestedDisconnect = true;
+
+        // 2. Langsung hentikan/batalkan semua antrean handler auto-reconnect yang sedang menunggu!
+        if (mReconnectHandler != null) {
+            mReconnectHandler.removeCallbacksAndMessages(null);
+        }
+
+        // 3. Matikan status retry
+        mIsRetryingConnection = false;
+        mReconnectAttempts = 0;
+
+        // 4. Sembunyikan notifikasi reconnect jika kebetulan sedang muncul
+        if (mReconnectNotification != null) {
+            mReconnectNotification.hide();
+            mReconnectNotification = null;
+        }
+
+        // 5. Panggil fungsi asli pemutus koneksi
+        super.disconnect();
     }
 
     @Override

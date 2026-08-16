@@ -571,11 +571,18 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 new MaterialAlertDialogBuilder(this)
                         .setMessage(getString(R.string.disconnectSure, serverName))
                         .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                            // Tambahkan pengaman null di sini agar tidak force close
                             if (mService != null) {
+                                // 1. Pastikan flag manual disconnect aktif duluan di service
+                                // (bisa dibantu panggil method disconnect yang sudah kita buat)
                                 mService.disconnect();
                             }
-                            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+
+                            // 2. Beri jeda sangat singkat (misal 150-200ms) menggunakan Handler
+                            // agar service sempat memproses state "disconnected secara manual"
+                            // sebelum Activity memuat ulang fragment favorites.
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                            }, 200);
                         })
                         .setNegativeButton(android.R.string.cancel, null)
                         .show();
