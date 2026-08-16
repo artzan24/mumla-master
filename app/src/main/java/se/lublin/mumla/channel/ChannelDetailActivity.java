@@ -28,6 +28,7 @@ import se.lublin.humla.IHumlaSession;
 import se.lublin.humla.model.IChannel;
 import se.lublin.mumla.R;
 import se.lublin.mumla.app.MumlaActivity;
+import se.lublin.mumla.service.IMumlaService;
 import se.lublin.mumla.service.MumlaService;
 
 public class ChannelDetailActivity extends AppCompatActivity {
@@ -50,6 +51,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
 
     private final Handler mStatusHandler = new Handler(Looper.getMainLooper());
     private long mLastApiCheckTime = 0;
+    private androidx.appcompat.app.AlertDialog mReconnectDialog;
 
     private final Runnable mStatusRunnable = new Runnable() {
         @Override
@@ -58,16 +60,105 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 try {
                     // --- 1. CEK KONEKSI PUTUS / SERVER DOWN ---
                     if (!mService.isConnected()) {
-                        mStatusHandler.removeCallbacks(this);
-                        // ... (kode alert dialog diringkas untuk kejelasan)
+
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+
+                            if (mReconnectDialog == null || !mReconnectDialog.isShowing()) {
+
+                                // LAYOUT DIALOG SAMA PERSIS DENGAN MUMLA ACTIVITY
+                                android.widget.LinearLayout layout = new android.widget.LinearLayout(ChannelDetailActivity.this);
+                                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+                                layout.setPadding(60, 50, 60, 30);
+                                layout.setGravity(android.view.Gravity.CENTER);
+
+                                // 1. Loading Spinner
+                                com.google.android.material.progressindicator.CircularProgressIndicator progressBar =
+                                        new com.google.android.material.progressindicator.CircularProgressIndicator(ChannelDetailActivity.this);
+                                progressBar.setIndeterminate(true);
+
+                                // 2. Teks Detail Error
+                                android.widget.TextView tvError = new android.widget.TextView(ChannelDetailActivity.this);
+                                tvError.setText("Gagal Terhubung ke Server");
+                                tvError.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
+                                tvError.setTextSize(14);
+                                tvError.setPadding(0, 30, 0, 10);
+
+                                // 3. Teks Info Loading Retry
+                                android.widget.TextView tvRetryInfo = new android.widget.TextView(ChannelDetailActivity.this);
+                                tvRetryInfo.setText("Tunggu, mencoba konek ulang ke server...");
+                                tvRetryInfo.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
+                                tvRetryInfo.setTextSize(13);
+
+                                layout.addView(progressBar);
+                                layout.addView(tvError);
+                                layout.addView(tvRetryInfo);
+
+                                mReconnectDialog = new com.google.android.material.dialog.MaterialAlertDialogBuilder(ChannelDetailActivity.this)
+                                        .setTitle("Koneksi Terputus")
+                                        .setView(layout)
+                                        .setCancelable(false)
+                                        .setNegativeButton("Keluar", (dialog, which) -> {
+                                            if (mStatusHandler != null && mStatusRunnable != null) {
+                                                mStatusHandler.removeCallbacks(mStatusRunnable);
+                                            }
+
+                                            dialog.dismiss();
+
+                                            se.lublin.mumla.app.MumlaActivity.sUserCancelledReconnect = true;
+
+                                            try {
+                                                IMumlaService mumlaService = (IMumlaService) mService;
+                                                if (mumlaService != null) {
+                                                    mumlaService.cancelReconnect();
+                                                }
+                                                if (mService != null) {
+                                                    mService.disconnect();
+                                                }
+                                            } catch (Exception e) {
+                                                Log.e(TAG, "Error disconnect on leave: " + e.getMessage());
+                                            }
+
+                                            finish();
+                                        })
+                                        .create();
+
+                                mReconnectDialog.show();
+                            }
+                        });
+
+                        // Cek kembali status koneksi 2 detik lagi saat terputus
+                        mStatusHandler.postDelayed(this, 2000);
                         return;
+
+                    } else {
+                        // KONEKSI SUDAH PULIH / CONNECTED KEMBALI
+                        if (mReconnectDialog != null && mReconnectDialog.isShowing()) {
+                            runOnUiThread(() -> {
+                                // Tutup dialog reconnect
+                                mReconnectDialog.dismiss();
+
+                                // Tampilkan Toast Anda Kembali Online
+                                Toast.makeText(ChannelDetailActivity.this, "Anda Kembali Online", Toast.LENGTH_SHORT).show();
+
+                                // Auto-rejoin ke channel detail aktif
+                                try {
+                                    IHumlaSession session = mService.HumlaSession();
+                                    if (session != null && !isUserJoinedToChannel()) {
+                                        session.joinChannel(mChannelId);
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Gagal auto-rejoin channel: " + e.getMessage());
+                                }
+                            });
+                        }
                     }
 
                     // --- 2. JALANKAN SINKRONISASI API SETIAP 5 DETIK ---
                     long currentTime = System.currentTimeMillis();
                     if (currentTime - mLastApiCheckTime > 5000) {
                         mLastApiCheckTime = currentTime;
-                        syncAccessFromApi(); // Memanggil endpoint POST login
+                        syncAccessFromApi();
                     }
 
                     // --- 3. DETEKSI PENCABUTAN AKSES ---
@@ -84,15 +175,12 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 allowedChannelsCsv = "1";
                             }
 
-                            Log.d(TAG, "DEBUG PTT SYNC -> Current Channel ID: " + mChannelId + " | Allowed Channels in Prefs: " + allowedChannelsCsv);
-
-                            // Pengecekan akurat agar ID 4 tidak keliru dengan ID 14 / 40
                             boolean isAccessRevoked = true;
                             try {
                                 String[] channelsArray = allowedChannelsCsv.split(",");
                                 for (String chId : channelsArray) {
                                     if (chId.trim().equals(String.valueOf(mChannelId))) {
-                                        isAccessRevoked = false; // Ditemukan, berarti akses masih ada
+                                        isAccessRevoked = false;
                                         break;
                                     }
                                 }
@@ -100,10 +188,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 isAccessRevoked = !allowedChannelsCsv.contains(String.valueOf(mChannelId));
                             }
 
-                            Log.d(TAG, "DEBUG PTT SYNC -> Is Access Revoked? " + isAccessRevoked);
-
                             if (isAccessRevoked) {
-                                Log.w(TAG, "DEBUG PTT SYNC -> Akses dicabut! Memulai proses pembersihan PTT dan keluar channel...");
                                 mStatusHandler.removeCallbacks(this);
 
                                 IHumlaSession session = mService.HumlaSession();
@@ -113,20 +198,18 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                         if (session.getSessionUser() != null) {
                                             sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                                         }
-                                        session.joinChannel(1); // Pindah ke Channel 1 (Guest)
-                                        Log.w(TAG, "DEBUG PTT SYNC -> Berhasil memindahkan user ke Channel 1 (Guest).");
+                                        session.joinChannel(1);
                                     } catch (Exception ex) {
-                                        Log.e(TAG, "DEBUG PTT SYNC -> Error forcing leave channel: " + ex.getMessage());
+                                        Log.e(TAG, "Error forcing leave channel: " + ex.getMessage());
                                     }
                                 }
 
                                 runOnUiThread(() -> {
                                     try {
                                         Toast.makeText(ChannelDetailActivity.this, "Akses channel dicabut oleh server.", Toast.LENGTH_LONG).show();
-                                        Log.w(TAG, "DEBUG PTT SYNC -> Menutup ChannelDetailActivity (finish).");
                                         finish();
                                     } catch (Exception e) {
-                                        Log.e(TAG, "DEBUG PTT SYNC -> Error finishing activity: " + e.getMessage());
+                                        Log.e(TAG, "Error finishing activity: " + e.getMessage());
                                     }
                                 });
                                 return;
@@ -140,7 +223,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
             }
 
             updateJoinStateUI();
-            mStatusHandler.postDelayed(this, 1000); // Cek loop setiap 1 detik
+            mStatusHandler.postDelayed(this, 1000);
         }
     };
     // ==========================================

@@ -46,6 +46,7 @@ import android.widget.AdapterView;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -137,7 +138,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         SharedPreferences.OnSharedPreferenceChangeListener, DrawerAdapter.DrawerDataProvider,
         ServerEditFragment.ServerEditListener {
     private static final String TAG = MumlaActivity.class.getName();
-
+    public static boolean sUserCancelledReconnect = false;
     private final Handler mChannelSyncHandler = new Handler(Looper.getMainLooper());
     private final Runnable mChannelSyncRunnable = new Runnable() {
         @Override
@@ -468,6 +469,14 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 Log.e("MumlaActivity", "Gagal mengganti ke ServerList: " + e.getMessage());
             }
         }
+        // 2. Handling Batal/Keluar Reconnect dari ChannelDetailActivity (Tambahkan Bagian Ini)
+        if (sUserCancelledReconnect) {
+            if (mErrorDialog != null && mErrorDialog.isShowing()) {
+                try {
+                    mErrorDialog.dismiss();
+                } catch (Exception ignored) {}
+            }
+        }
         // =========================================================================
 
         Intent connectIntent = new Intent(this, MumlaService.class);
@@ -485,6 +494,20 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
         if (mDrawerLayout != null) {
             mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent); // Memperbarui getIntent()
+
+        if (intent != null && intent.getBooleanExtra("EXTRA_USER_CANCELLED_RECONNECT", false)) {
+            if (mErrorDialog != null && mErrorDialog.isShowing()) {
+                try {
+                    mErrorDialog.dismiss();
+                } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -1068,33 +1091,57 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 mConnectingDialog.show();
                 break;
             case CONNECTION_LOST:
+                // --- TAMBAHKAN PENGECEKAN FLAG DI SINI ---
+                if (sUserCancelledReconnect) {
+                    sUserCancelledReconnect = false; // Reset flag
+
+                    // Matikan sisa-sisa auto retry dari service jika ada
+                    try {
+                        IMumlaService mumlaService = (IMumlaService) getService();
+                        if (mumlaService != null) {
+                            mumlaService.cancelReconnect();
+                        }
+                    } catch (Exception ignored) {}
+
+                    // Tutup dialog jika sempat terbuka
+                    if (mErrorDialog != null && mErrorDialog.isShowing()) {
+                        try {
+                            mErrorDialog.dismiss();
+                        } catch (Exception ignored) {}
+                    }
+
+                    break; // HENTIKAN! Dialog tidak akan dibuat.
+                }
+                // ------------------------------------------
                 try {
                     IMumlaService mumlaService = (IMumlaService) getService();
                     if (mumlaService != null && !mumlaService.isErrorShown()) {
                         HumlaException error = mumlaService.getConnectionError();
 
-                        // Mencegah NullPointerException jika getMessage() bernilai null
                         String rawMsg = (error != null && error.getMessage() != null) ? error.getMessage() : "";
                         String lowerMsg = rawMsg.toLowerCase();
                         String errorMsg;
 
-                        // Klasifikasi Pesan Error yang Lebih Presisi
                         if (lowerMsg.contains("certificate") || lowerMsg.contains("handshake") || lowerMsg.contains("ssl") || lowerMsg.contains("tls")) {
-                            errorMsg = "Gagal Verifikasi Sertifikat SSL/TLS Server NRP sudah digunakan";
+                            errorMsg = "Gagal Verifikasi Sertifikat SSL/TLS";
                         } else if (lowerMsg.contains("refused") || lowerMsg.contains("unreachable")) {
-                            errorMsg = "Server Offline / Port " + (service.getTargetServer() != null ? service.getTargetServer().getPort() : "") + " Tertutup";
+                            errorMsg = "Server Offline / Port Tertutup";
                         } else if (lowerMsg.contains("timed out") || lowerMsg.contains("timeout")) {
-                            errorMsg = "Koneksi Timeout (Cek IP Server & Port)";
+                            errorMsg = "Koneksi Timeout (Cek IP Server)";
                         } else if (lowerMsg.contains("network") || lowerMsg.contains("resolve") || lowerMsg.contains("unknown host")) {
-                            errorMsg = "Koneksi Internet Lemah / Host Domain Tidak Ditemukan";
-                        } else if (!rawMsg.isEmpty()) {
-                            errorMsg = "Gagal Terhubung Server Sedang Gangguan atau Offline";
+                            errorMsg = "Internet Offline / Host Tidak Ditemukan";
                         } else {
-                            errorMsg = "Gagal Terhubung Server Sedang Gangguan atau Offline";
+                            errorMsg = "Gagal Terhubung ke Server";
                         }
 
-                        mumlaService.cancelReconnect();
-                        mumlaService.markErrorShown();
+                        // PERBAIKAN: Panggil reconnect tanpa parameter, atau connect ulang ke target server
+                        if (mService != null && mService.getTargetServer() != null) {
+                            Server target = mService.getTargetServer();
+                            mService.disconnect();
+
+                            // Panggil method helper bawaan MumlaActivity
+                            connectToServer(target);
+                        }
 
                         final String finalErrorMsg = errorMsg;
 
@@ -1102,15 +1149,52 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             try {
                                 if (isFinishing() || isDestroyed()) return;
 
+                                if (mErrorDialog != null && mErrorDialog.isShowing()) {
+                                    mErrorDialog.dismiss();
+                                }
+
+                                // MEMBUAT LAYOUT DIALOG VIA JAVA (TANPA FILE XML)
+                                android.widget.LinearLayout layout = new android.widget.LinearLayout(MumlaActivity.this);
+                                layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+                                layout.setPadding(60, 50, 60, 30);
+                                layout.setGravity(android.view.Gravity.CENTER);
+
+                                // 1. Loading Spinner
+                                com.google.android.material.progressindicator.CircularProgressIndicator progressBar =
+                                        new com.google.android.material.progressindicator.CircularProgressIndicator(MumlaActivity.this);
+                                progressBar.setIndeterminate(true);
+
+                                // 2. Teks Detail Error
+                                android.widget.TextView tvError = new android.widget.TextView(MumlaActivity.this);
+                                tvError.setText(finalErrorMsg);
+                                tvError.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
+                                tvError.setTextSize(14);
+                                tvError.setPadding(0, 30, 0, 10);
+
+                                // 3. Teks Info Loading Retry
+                                android.widget.TextView tvRetryInfo = new android.widget.TextView(MumlaActivity.this);
+                                tvRetryInfo.setText("Tunggu, mencoba konek ulang ke server...");
+                                tvRetryInfo.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
+                                tvRetryInfo.setTextSize(13);
+
+                                layout.addView(progressBar);
+                                layout.addView(tvError);
+                                layout.addView(tvRetryInfo);
+
                                 mErrorDialog = new MaterialAlertDialogBuilder(MumlaActivity.this)
-                                        .setTitle("Informasi Koneksi")
-                                        .setMessage(finalErrorMsg)
+                                        .setTitle("Koneksi Terputus")
+                                        .setView(layout)
                                         .setCancelable(false)
-                                        .setPositiveButton("OK", (dialog, which) -> {
+                                        .setNegativeButton("Batal", (dialog, which) -> {
+                                            mumlaService.cancelReconnect();
+                                            if (mService != null) {
+                                                mService.disconnect();
+                                            }
                                             dialog.dismiss();
                                             loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
                                         })
                                         .create();
+
                                 mErrorDialog.show();
 
                             } catch (Exception e) {

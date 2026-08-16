@@ -32,6 +32,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
@@ -44,6 +45,7 @@ import se.lublin.mumla.app.MumlaActivity;
  * Created by andrew on 08/08/14.
  */
 public class MumlaConnectionNotification {
+    private static final String TAG = "MumlaNotification";
     private static final int NOTIFICATION_ID = 1;
     private static final String BROADCAST_MUTE = "b_mute";
     private static final String BROADCAST_DEAFEN = "b_deafen";
@@ -98,7 +100,25 @@ public class MumlaConnectionNotification {
      * Shows the notification and registers the notification action button receiver.
      */
     public void show() {
-        createNotification();
+        Notification notification = buildNotification();
+
+        // 1. Coba update via NotificationManager terlebih dahulu jika Service sudah berstatus foreground
+        NotificationManager manager = (NotificationManager) mService.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) {
+            manager.notify(NOTIFICATION_ID, notification);
+        }
+
+        // 2. Jalankan startForeground() secara aman (hanya panggil jika belum berjalan/tangkap exception jika di background)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                mService.startForeground(NOTIFICATION_ID, notification, FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                mService.startForeground(NOTIFICATION_ID, notification);
+            }
+        } catch (Exception e) {
+            // Menangkap ForegroundServiceStartNotAllowedException pada Android 12+ saat di-trigger dari background BroadcastReceiver
+            Log.w(TAG, "Gagal memanggil startForeground dari background: " + e.getMessage());
+        }
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(BROADCAST_DEAFEN);
@@ -130,9 +150,9 @@ public class MumlaConnectionNotification {
     }
 
     /**
-     * Called to update/create the service's foreground Mumla notification.
+     * Called to build the service's Mumla notification without explicitly starting foreground.
      */
-    private Notification createNotification() {
+    private Notification buildNotification() {
         String channelId = "";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             channelId = "connected_channel";
@@ -140,7 +160,9 @@ public class MumlaConnectionNotification {
             NotificationChannel chan = new NotificationChannel(channelId, channelName,
                     NotificationManager.IMPORTANCE_DEFAULT);
             NotificationManager manager = mService.getSystemService(NotificationManager.class);
-            manager.createNotificationChannel(chan);
+            if (manager != null) {
+                manager.createNotificationChannel(chan);
+            }
         }
         NotificationCompat.Builder builder =
                 new NotificationCompat.Builder(mService, channelId);
@@ -183,13 +205,7 @@ public class MumlaConnectionNotification {
                 channelListIntent, FLAG_CANCEL_CURRENT | FLAG_IMMUTABLE);
         builder.setContentIntent(pendingIntent);
 
-        Notification notification = builder.build();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            mService.startForeground(NOTIFICATION_ID, notification, FOREGROUND_SERVICE_TYPE_MICROPHONE);
-        } else {
-            mService.startForeground(NOTIFICATION_ID, notification);
-        }
-        return notification;
+        return builder.build();
     }
 
     public interface OnActionListener {
