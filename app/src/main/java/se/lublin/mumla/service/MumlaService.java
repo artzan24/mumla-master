@@ -113,7 +113,9 @@ public class MumlaService extends HumlaService implements
 
     private String mLastKnownUsername = "Unknown";
 
-    private static final int RECONNECT_DELAY_MS = 5000;
+    //private static final int RECONNECT_DELAY_MS = 5000;
+
+    private String mCurrentNrp = "Unknown";
 
     // === VARIABEL UNTUK TOLERANSI SINYAL & AUTO-RECONNECT ===
     private final Handler mReconnectHandler = new Handler(Looper.getMainLooper());
@@ -150,7 +152,6 @@ public class MumlaService extends HumlaService implements
     private HumlaObserver mObserver = new HumlaObserver() {
         @Override
         public void onConnecting() {
-            // Tambahkan reset flag di sini juga agar bersih saat mulai connect
             mUserRequestedDisconnect = false;
 
             if (mReconnectNotification != null) {
@@ -164,7 +165,10 @@ public class MumlaService extends HumlaService implements
                 mNotification = MumlaConnectionNotification.create(MumlaService.this,
                         getString(R.string.mumlaConnecting) + tor,
                         MumlaService.this);
-                mNotification.show();
+                // Hanya tampilkan jika service foreground sudah aktif normal
+                if (mIsForegroundStarted) {
+                    mNotification.show();
+                }
             } catch (Exception e) {
                 Log.w(TAG, "Gagal memperbarui notifikasi koneksi di background: " + e.getMessage());
             }
@@ -346,7 +350,10 @@ public class MumlaService extends HumlaService implements
         }
 
         mIsRetryingConnection = true;
-        mReconnectAttempts = 0; // Reset ke 0 sebelum memulai loop backoff
+        mReconnectAttempts = 0;
+
+        // PEGANG WAKE LOCK AGAR TIDAK TERBEKU SAAT STANDBY
+        acquireCpuWakeLock();
 
         mReconnectHandler.post(new Runnable() {
             @Override
@@ -355,11 +362,11 @@ public class MumlaService extends HumlaService implements
                     Log.d(TAG, "✅ Reconnect berhasil!");
                     mIsRetryingConnection = false;
                     mReconnectAttempts = 0;
+                    releaseCpuWakeLock(); // Lepas jika sudah sukses
                     return;
                 }
 
                 if (mReconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    // Logika Exponential Backoff: 3s, 6s, 12s, 24s, 48s, dst...
                     long delay = (long) (BASE_RECONNECT_DELAY * Math.pow(2, mReconnectAttempts));
                     if (delay > MAX_RECONNECT_DELAY) delay = MAX_RECONNECT_DELAY;
 
@@ -372,20 +379,22 @@ public class MumlaService extends HumlaService implements
                         Log.w(TAG, "Error saat mencoba reconnect: " + ex.getMessage());
                     }
 
+                    // Gunakan postDelayed biasa atau Alarm jika ingin lebih tangguh di background
                     mReconnectHandler.postDelayed(this, delay);
                 } else {
                     Log.e(TAG, "❌ Maksimal percobaan tercapai. Berhenti mencoba.");
                     mIsRetryingConnection = false;
-                    releaseCpuWakeLock();
+                    releaseCpuWakeLock(); // Lepas wake lock
 
-                    if (lastException != null && !mSuppressNotifications) {
-                        mReconnectNotification = MumlaReconnectNotification.show(
-                                MumlaService.this,
-                                lastException.getMessage(),
-                                false,
-                                MumlaService.this
-                        );
+                    if (mReconnectNotification != null) {
+                        mReconnectNotification.hide();
+                        mReconnectNotification = null;
                     }
+
+                    // Matikan total service dan aplikasi
+                    MumlaService.this.disconnect();
+                    stopSelf();
+                    android.os.Process.killProcess(android.os.Process.myPid());
                 }
             }
         });
@@ -465,11 +474,17 @@ public class MumlaService extends HumlaService implements
     }
 
     private final Handler mBackgroundSyncHandler = new Handler(Looper.getMainLooper());
+
+    private int mConnectionFailCount = 0; // Tambahkan variabel counter di atas
+
     private final Runnable mBackgroundSyncRunnable = new Runnable() {
         @Override
         public void run() {
             try {
                 if (isConnectionEstablished()) {
+                    // Reset counter jika koneksi normal kembali
+                    mConnectionFailCount = 0;
+
                     String currentUsername = "Unknown";
                     String activeChannelName = "Lobby Utama";
 
@@ -482,10 +497,6 @@ public class MumlaService extends HumlaService implements
                         }
                     } catch (Exception ignored) {}
 
-                    if (currentUsername != null && !currentUsername.equals("Unknown") && !currentUsername.isEmpty()) {
-                        mLastKnownUsername = currentUsername;
-                    }
-
                     se.lublin.mumla.helper.RealtimeStatusSync.sendStatus(
                             MumlaService.this,
                             currentUsername,
@@ -493,7 +504,18 @@ public class MumlaService extends HumlaService implements
                             activeChannelName
                     );
 
-                    Log.d(TAG, "✅ SYNC BERHASIL | NRP: [" + currentUsername + "] | Channel: [" + activeChannelName + "]");
+                } else {
+                    // Jika koneksi terputus / tidak ada internet
+                    mConnectionFailCount++;
+
+                    // Misalkan dicek tiap 5 detik, jika 8 kali gagal (= ~40 detik)
+                    if (mConnectionFailCount >= 6) {
+                        // Panggil fungsi untuk memunculkan peringatan ke layar
+                        showNetworkWarningOnUI();
+
+                        // Reset counter agar dialog tidak muncul terus-menerus setiap detik
+                        mConnectionFailCount = 0;
+                    }
                 }
             } catch (Exception e) {
                 Log.e(TAG, "❌ Error sync: " + e.getMessage());
@@ -502,6 +524,24 @@ public class MumlaService extends HumlaService implements
             mBackgroundSyncHandler.postDelayed(this, 5000);
         }
     };
+
+    private void showNetworkWarningOnUI() {
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                // Pilihan 1: Menggunakan Toast panjang
+                android.widget.Toast.makeText(
+                        MumlaService.this,
+                        "⚠️ Koneksi internet bermasalah! Sinkronisasi status terganggu.",
+                        android.widget.Toast.LENGTH_LONG
+                ).show();
+
+                // Pilihan 2: Jika ingin menggunakan Broadcast agar Activity bisa menampilkan Dialog khusus
+                Intent intent = new Intent("ACTION_NETWORK_LOST");
+                sendBroadcast(intent);
+            }
+        });
+    }
 
     @Override
     public void onConnectionSynchronized() {
@@ -808,16 +848,65 @@ public class MumlaService extends HumlaService implements
 
     @Override
     public void reconnect() {
+        // Cek apakah ada internet sebelum memaksa reconnect
+        if (!isNetworkAvailable()) {
+            Log.w(TAG, "⚠️ Internet mati, membatalkan percobaan reconnect agar tidak macet.");
+            return;
+        }
+
+        if (isConnectionEstablished() || isReconnecting()) {
+            Log.d(TAG, "🧹 Membersihkan koneksi lama sebelum memulai koneksi baru...");
+            super.disconnect();
+        }
+
         connect();
+    }
+
+    private boolean isNetworkAvailable() {
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm != null) {
+            android.net.NetworkCapabilities capabilities = null;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                android.net.Network network = cm.getActiveNetwork();
+                if (network != null) {
+                    capabilities = cm.getNetworkCapabilities(network);
+                }
+            }
+            return capabilities != null && (
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                            capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+            );
+        }
+        return true; // Default jika gagal cek, biarkan sistem yang tangani
     }
 
     @Override
     public void cancelReconnect() {
+        mIsRetryingConnection = false;
+        mReconnectAttempts = 0;
+
+        // Lepas WakeLock agar CPU tidak kerja terus
+        releaseCpuWakeLock();
+
+        if (mReconnectHandler != null) {
+            mReconnectHandler.removeCallbacksAndMessages(null);
+        }
+
         if (mReconnectNotification != null) {
             mReconnectNotification.hide();
             mReconnectNotification = null;
         }
-        super.cancelReconnect();
+
+        // Putus koneksi bersih
+        super.disconnect();
+
+        // Kirim status disconnect ke observer agar List Channel merespons & menutup dialog
+        if (mObserver != null) {
+            mObserver.onDisconnected(null);
+        }
+
+        Log.d(TAG, "🛑 Auto-reconnect dibatalkan manual, kembali ke status bersih.");
     }
 
     @Override

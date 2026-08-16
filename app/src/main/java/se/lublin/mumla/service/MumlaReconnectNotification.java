@@ -105,7 +105,7 @@ public class MumlaReconnectNotification {
         NotificationCompat.Builder builder =
                 new NotificationCompat.Builder(mContext, channelId);
 
-        builder.setSmallIcon(R.drawable.ic_stat_notify);
+        builder.setSmallIcon(R.drawable.logo_tik);
         builder.setPriority(NotificationCompat.PRIORITY_MAX);
         builder.setDefaults(NotificationCompat.DEFAULT_VIBRATE | NotificationCompat.DEFAULT_LIGHTS);
         builder.setContentTitle(mContext.getString(R.string.mumlaDisconnected));

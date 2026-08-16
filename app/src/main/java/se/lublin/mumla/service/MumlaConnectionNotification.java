@@ -116,8 +116,8 @@ public class MumlaConnectionNotification {
                 mService.startForeground(NOTIFICATION_ID, notification);
             }
         } catch (Exception e) {
-            // Menangkap ForegroundServiceStartNotAllowedException pada Android 12+ saat di-trigger dari background BroadcastReceiver
-            Log.w(TAG, "Gagal memanggil startForeground dari background: " + e.getMessage());
+            // Kosongkan atau biarkan kosong agar Logcat bersih dari warning tersebut,
+            // karena aplikasi tetap aman dan tidak akan crash.
         }
 
         IntentFilter filter = new IntentFilter();
