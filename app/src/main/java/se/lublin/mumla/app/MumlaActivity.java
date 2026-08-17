@@ -38,11 +38,13 @@ import android.text.InputType;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.AdapterView;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ListView;
@@ -173,11 +175,14 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private AlertDialog mConnectingDialog;
     private AlertDialog mErrorDialog;
     private boolean mIsPttBlocked = false;
+    private boolean mHasShownWelcomeToast = false;
+    private Toast loadingToast;
 
     /**
      * List of fragments to be notified about service state changes.
      */
     private final List<HumlaServiceFragment> mServiceFragments = new ArrayList<HumlaServiceFragment>();
+    private static final int PERMISSION_REQUEST_BACKGROUND_LOCATION = 101;
 
     private final ServiceConnection mConnection = new ServiceConnection() {
         @Override
@@ -301,6 +306,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        showZelloStylePermissionDialog();
+
         // Jika dipanggil dari logout paksa, langsung muat FavouriteServerListFragment
         if (isFromLogout) {
             getIntent().removeExtra("EXTRA_SHOW_SERVER_LIST");
@@ -310,7 +317,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         }
 
         mSettings = Settings.getInstance(this);
-        checkInitialPermissions();
+        //checkInitialPermissions();
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -322,10 +329,45 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
         }
 
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+        //Fungsi back standar langsung ke dialog disconnect
+        /*getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 if (mService != null && mService.isConnected()) {
+                    new MaterialAlertDialogBuilder(MumlaActivity.this)
+                            .setMessage(getString(R.string.disconnectSure, mService.getTargetServer().getName()))
+                            .setPositiveButton(R.string.confirm, (dialog, which) -> {
+                                mService.disconnect();
+                                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                            })
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                } else {
+                    setEnabled(false);
+                    getOnBackPressedDispatcher().onBackPressed();
+                    setEnabled(true);
+                }
+            }
+        });*/
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+
+                boolean isChannelScreen = false;
+                if (currentFragment != null) {
+                    String fragmentClassName = currentFragment.getClass().getName();
+                    // Cek apakah nama class-nya mengandung ChannelFragment
+                    if (fragmentClassName.contains("ChannelFragment")) {
+                        isChannelScreen = true;
+                    }
+                }
+
+                if (isChannelScreen) {
+                    // Jika sedang di halaman utama channel, langsung minimize aplikasi ke background
+                    moveTaskToBack(true);
+                } else if (mService != null && mService.isConnected()) {
                     new MaterialAlertDialogBuilder(MumlaActivity.this)
                             .setMessage(getString(R.string.disconnectSure, mService.getTargetServer().getName()))
                             .setPositiveButton(R.string.confirm, (dialog, which) -> {
@@ -414,34 +456,235 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     }
 
     private void checkInitialPermissions() {
-        List<String> listPermissionsNeeded = new ArrayList<>();
-
-        // 1. Cek Record Audio (Opsional jika ingin diminta di awal, atau biarkan saat connect)
+        // 1. Cek Rekam Audio terlebih dahulu
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            listPermissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{Manifest.permission.RECORD_AUDIO},
+                    201 // Request code khusus untuk Audio
+            );
+            return;
         }
 
-        // 2. Cek Lokasi
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            listPermissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        }
-
-        // 3. Cek Notifikasi (Android 13+)
+        // 2. Jika Audio sudah, cek Notifikasi (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                listPermissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+                ActivityCompat.requestPermissions(
+                        this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        202 // Request code khusus untuk Notifikasi
+                );
+                return;
             }
         }
 
-        // Jika ada izin yang belum diberikan, langsung tampilkan dialog pop-up
-        if (!listPermissionsNeeded.isEmpty()) {
+        // 3. Jika Notifikasi sudah, cek Lokasi Utama (Fine Location)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
                     this,
-                    listPermissionsNeeded.toArray(new String[0]),
-                    200 // Kode Request Gabungan
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    203 // Request code khusus untuk Lokasi Depan
             );
+            return;
+        }
+
+        // 4. Jika semua izin dasar di atas sudah lengkap, lanjut ke izin latar belakang
+        checkBackgroundLocationPermission();
+    }
+
+    private void checkBackgroundLocationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle("Akses Lokasi Latar Belakang")
+                        .setMessage("Agar posisi perangkat selalu akurat terpantau seperti Zello, pilih opsi 'Selalu izinkan' (Always allow) pada menu berikutnya.")
+                        .setPositiveButton("Lanjutkan", (dialog, which) -> {
+                            ActivityCompat.requestPermissions(
+                                    MumlaActivity.this,
+                                    new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
+                                    101 // Request code 101
+                            );
+                        })
+                        .setCancelable(false)
+                        .show();
+            } else {
+                // Jika izin lokasi latar belakang sudah aktif sebelumnya, langsung ke dialog baterai OEM
+                showOemBatteryOptimizationDialog();
+            }
+        } else {
+            // Untuk Android di bawah versi 10, langsung ke dialog baterai OEM
+            showOemBatteryOptimizationDialog();
         }
     }
+
+    private void showZelloStylePermissionDialog() {
+        SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+
+        // 1. Cek apakah status baterai sudah "Tidak ada pembatasan"
+        boolean isIgnoringBatteryOptimizations = false;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                isIgnoringBatteryOptimizations = pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+        }
+
+        // 2. Cek apakah izin dasar (Audio & Lokasi) sudah diberikan oleh pengguna
+        boolean isAudioGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        boolean isLocationGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+
+        // 3. JIKA SEMUA SUDAH BERES (Baterai aman & Izin lengkap), lewati dialog
+        if (isIgnoringBatteryOptimizations && isAudioGranted && isLocationGranted) {
+            prefs.edit().putBoolean("zello_perm_dialog_v7", true).apply();
+            return;
+        }
+
+        // 4. Jika SharedPreferences sudah true TAPI kenyataannya baterai/izin dicabut lagi,
+        // kita reset flag-nya agar layout custom TETAP MUNCUL KEMBALI!
+        if (!isIgnoringBatteryOptimizations || !isAudioGranted || !isLocationGranted) {
+            prefs.edit().putBoolean("zello_perm_dialog_v7", false).apply();
+        }
+
+        // 5. Jika flag bernilai true dan semuanya aman, langsung jalankan inisialisasi
+        if (prefs.getBoolean("zello_perm_dialog_v7", false)) {
+            checkInitialPermissions();
+            return;
+        }
+
+        // 6. Jika belum lengkap, TAMPILKAN LAYOUT CUSTOM DIALOG ZELLO DI SINI
+        getWindow().getDecorView().post(() -> {
+            try {
+                LayoutInflater inflater = LayoutInflater.from(this);
+                View dialogView = inflater.inflate(R.layout.dialog_zello_permissions, null);
+
+                androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                        .setView(dialogView)
+                        .setCancelable(false)
+                        .create();
+
+                Button btnContinue = dialogView.findViewById(R.id.btnContinuePermissions);
+                if (btnContinue != null) {
+                    btnContinue.setOnClickListener(v -> {
+                        prefs.edit().putBoolean("zello_perm_dialog_v7", true).apply();
+                        dialog.dismiss();
+
+                        // Memanggil pengecekan izin sistem Android
+                        checkInitialPermissions();
+                    });
+                }
+
+                dialog.show();
+            } catch (Exception e) {
+                e.printStackTrace();
+                checkInitialPermissions();
+            }
+        });
+    }
+
+    private void showOemBatteryOptimizationDialog() {
+        boolean isIgnoringBatteryOptimizations = false;
+
+        // 1. Cek status baterai saat ini secara langsung dari sistem
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                isIgnoringBatteryOptimizations = pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+        }
+
+        // 2. Jika baterai SUDAH diatur "Tidak ada pembatasan", jangan tampilkan dialog apa pun
+        if (isIgnoringBatteryOptimizations) {
+            // Opsional: simpan status selesai
+            getPreferences(MODE_PRIVATE).edit().putBoolean("oem_battery_dialog_shown", true).apply();
+            return;
+        }
+
+        // 3. Jika baterai BELUM disetting, PASTIKAN DIALOG TETAP MUNCUL (abaikan SharedPreferences yang memblokir)
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Setelan Latar Belakang")
+                .setMessage("Agar radio Roip TIK Bali tetap aktif dan tidak mati saat layar terkunci, silakan ubah setelan baterai menjadi 'Tidak ada pembatasan' (Unrestricted).")
+                .setPositiveButton("Buka Pengaturan", (dialog, which) -> {
+                    // Panggil fungsi pembuka pengaturan baterai Xiaomi Anda
+                    openXiaomiBatterySettings();
+                })
+                .setNegativeButton("Nanti", (dialog, which) -> {
+                    // Pengguna memilih nanti, dialog akan ditutup tapi bisa muncul lagi nanti jika baterai belum disetting
+                    dialog.dismiss();
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    private void openXiaomiBatterySettings() {
+        boolean isIgnoringBatteryOptimizations = false;
+
+        // Cek apakah status baterai sudah "Tidak ada pembatasan"
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                isIgnoringBatteryOptimizations = pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+        }
+
+        // Ambil status flag apakah perizinan lainnya sudah ditandai selesai oleh pengguna
+        SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        boolean isOtherPermissionsDone = prefs.getBoolean("xiaomi_other_permissions_completed", false);
+
+        Intent intentToOpen;
+
+        // KONDISI 1: Jika baterai BELUM disetting, arahkan ke Detail Baterai terlebih dahulu
+        if (!isIgnoringBatteryOptimizations) {
+            intentToOpen = new Intent().setComponent(new android.content.ComponentName(
+                            "com.miui.powerkeeper",
+                            "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"
+                    )).putExtra("package_name", getPackageName())
+                    .putExtra("package_uid", getApplicationInfo().uid);
+        }
+        // KONDISI 2: Jika baterai SUDAH aman, tapi Perizinan Lainnya BELUM ditandai selesai
+        else if (!isOtherPermissionsDone) {
+            intentToOpen = new Intent().setComponent(new android.content.ComponentName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.permissions.PermissionsEditorActivity"
+            )).putExtra("extra_pkgname", getPackageName());
+        }
+        // KONDISI 3: Jika SEMUA sudah beres, buka App Info standar sebagai fallback terakhir
+        else {
+            intentToOpen = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intentToOpen.setData(Uri.parse("package:" + getPackageName()));
+        }
+
+        try {
+            intentToOpen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intentToOpen);
+        } catch (Exception e) {
+            // Fallback pengaman jika komponen khusus Xiaomi gagal terbuka
+            try {
+                Intent fallbackIntent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                fallbackIntent.setData(Uri.parse("package:" + getPackageName()));
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fallbackIntent);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Menangkap respons dari izin satu per satu (Audio: 201, Notifikasi: 202, Lokasi: 203)
+        if (requestCode == 201 || requestCode == 202 || requestCode == 203) {
+            // Setelah satu izin di-klik, panggil kembali checkInitialPermissions()
+            // untuk lanjut memunculkan izin berikutnya secara otomatis
+            checkInitialPermissions();
+        }
+        else if (requestCode == 101) {
+            // Setelah dialog Lokasi Latar Belakang selesai, lanjut ke Baterai OEM
+            showOemBatteryOptimizationDialog();
+        }
+    }
+
 
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
@@ -753,7 +996,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             return;
         }
 
-        Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT).show();
+        //Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT).show();
+        loadingToast = Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT);
+        loadingToast.show();
 
         String url = "https://mumble.tekkombali.com/api/login";
         String apiKey = "RAHASIA_RADIO_24101981"; // Ganti dengan X-API-KEY yang valid di CI4 Anda
@@ -792,14 +1037,16 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 String responseBodyString = response.body() != null ? response.body().string() : "";
 
                 if (response.isSuccessful()) {
-                    // Jika sukses (200 OK)
+                    // Jika sukses (200 OK) dari API Login
                     Gson gson = new Gson();
                     LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
 
                     runOnUiThread(() -> {
+                        if (loadingToast != null) {
+                            loadingToast.cancel();
+                        }
                         if (loginData != null && loginData.isStatus()) {
                             String realname = loginData.getProfile().getRealname();
-                            String kesatuan = loginData.getProfile().getKesatuan();
                             String nrpAsli = inputNrp.trim();
 
                             SessionManager sessionManager = new SessionManager(getApplicationContext());
@@ -807,13 +1054,12 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
                             try {
                                 List<Channel> channelObjects = loginData.getAllowed_channels();
-                                StringBuilder channelIdsBuilder = new StringBuilder("1"); // Selalu sertakan ID 1 (lobby utama)
+                                StringBuilder channelIdsBuilder = new StringBuilder("1");
 
                                 if (channelObjects != null) {
                                     for (Channel ch : channelObjects) {
-                                        // Ubah string ID dari ch.getId() menjadi integer
                                         int channelId = Integer.parseInt(ch.getId());
-                                        if (channelId != 1) { // Hindari duplikat angka 1
+                                        if (channelId != 1) {
                                             channelIdsBuilder.append(",").append(channelId);
                                         }
                                     }
@@ -824,31 +1070,32 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
-                            // ------------------------------------------------------------------------------------
 
                             server.setUsername(nrpAsli);
                             if (server.isSaved()) {
                                 mDatabase.updateServer(server);
                             }
 
-                            com.google.android.material.snackbar.Snackbar snackbar = com.google.android.material.snackbar.Snackbar.make(
-                                    findViewById(android.R.id.content),
-                                    "Selamat datang,\n" + realname,
-                                    com.google.android.material.snackbar.Snackbar.LENGTH_LONG
-                            );
+                            // Tampilkan pesan selamat datang
+                            /*String fullText = "Selamat datang,\n" + realname;
+                            //android.text.SpannableString spannable = new android.text.SpannableString(fullText);
+                            //spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                                    15, fullText.length(), 0);*/
 
-                            String fullText = "Selamat datang,\n" + realname;
-                            android.text.SpannableString spannable = new android.text.SpannableString(fullText);
+                            android.content.SharedPreferences prefs = getApplicationContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                            prefs.edit().putString("realname", realname).apply();
 
-                            // Membuat nama menjadi TEBAL (Bold)
-                            spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                                    15, fullText.length(), 0);
+                            //Toast toast = Toast.makeText(getApplicationContext(), spannable, Toast.LENGTH_LONG);
+                            //toast.show();
 
-                            Toast toast = Toast.makeText(getApplicationContext(), spannable, Toast.LENGTH_LONG);
-                            toast.show();
-
-                            mServerPendingPerm = server;
-                            connectToServerWithPerm();
+                            // --- TAMBAHKAN PENGECEKAN KONEKSI SEBELUM LANJUT ---
+                            // Pastikan server tujuan tidak kosong sebelum memicu koneksi socket Mumble
+                            if (server != null) {
+                                mServerPendingPerm = server;
+                                connectToServerWithPerm();
+                            } else {
+                                showAccessDeniedDialog("Konfigurasi server tidak valid.");
+                            }
 
                         } else {
                             String pesanError = loginData != null ? loginData.getMessage() : "NRP tidak terdaftar!";
@@ -857,9 +1104,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                     });
                 } else {
                     // Jika error dari server (Misal 401 Unauthorized, 404, dll)
+                    if (loadingToast != null) {
+                        loadingToast.cancel();
+                    }
                     String errorMessage = "Terjadi kesalahan pada server (" + response.code() + ")";
                     try {
-                        // Parse menggunakan JSONObject bawaan Android agar fleksibel mengambil nested key
                         org.json.JSONObject jsonObject = new org.json.JSONObject(responseBodyString);
                         if (jsonObject.has("messages")) {
                             org.json.JSONObject messagesObj = jsonObject.getJSONObject("messages");
@@ -870,7 +1119,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             errorMessage = jsonObject.getString("message");
                         }
                     } catch (Exception e) {
-                        // Jika gagal parsing JSON, gunakan isi body apa adanya jika ada
                         if (!responseBodyString.isEmpty()) {
                             errorMessage = responseBodyString;
                         }
@@ -974,51 +1222,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         connectTask.execute(server);
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (grantResults.length == 0) {
-            return;
-        }
-
-        switch (requestCode) {
-            case PERMISSIONS_REQUEST_RECORD_AUDIO:
-                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    connectToServerWithPerm();
-                } else {
-                    Toast.makeText(MumlaActivity.this, getString(R.string.grant_perm_microphone),
-                            Toast.LENGTH_LONG).show();
-                }
-                break;
-
-            case 100:
-                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Jika pengguna memilih Allow/Izinkan, lanjutkan proses koneksi & kirim GPS
-                    connectToServerWithPerm();
-                } else {
-                    // Jika ditolak, beri tahu pengguna lalu tetap lanjutkan koneksi agar suara tetap bisa jalan
-                    Toast.makeText(MumlaActivity.this, "Izin lokasi ditolak, koordinat GPS tidak dikirim.",
-                            Toast.LENGTH_LONG).show();
-                    connectToServerWithPerm();
-                }
-                break;
-
-            case PERMISSIONS_REQUEST_POST_NOTIFICATIONS:
-                mPermPostNotificationsAsked = true;
-                if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
-                    if (ActivityCompat.shouldShowRequestPermissionRationale(MumlaActivity.this,
-                            Manifest.permission.POST_NOTIFICATIONS)) {
-                        Toast.makeText(MumlaActivity.this,
-                                getString(R.string.grant_perm_notifications), Toast.LENGTH_LONG).show();
-                    }
-                }
-                connectToServerWithPerm();
-                break;
-        }
-    }
-
     private boolean isPortOpen(final String host, final int port, final int timeout) {
         final AtomicBoolean open = new AtomicBoolean(false);
         try {
@@ -1097,12 +1300,107 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                         .create();
                 mConnectingDialog.show();
                 break;
-            case CONNECTION_LOST:
-                // --- TAMBAHKAN PENGECEKAN FLAG DI SINI ---
-                if (sUserCancelledReconnect) {
-                    sUserCancelledReconnect = false; // Reset flag
 
-                    // Matikan sisa-sisa auto retry dari service jika ada
+            case CONNECTED:
+                try {
+                    if (!mHasShownWelcomeToast) {
+                        android.content.SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                        String realname = prefs.getString("realname", "");
+
+                        if (realname != null && !realname.isEmpty()) {
+                            String fullText = "Login Sukses\nSelamat datang, " + realname;
+                            android.text.SpannableString spannable = new android.text.SpannableString(fullText);
+                            spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                                    15, fullText.length(), 0);
+
+                            // MEMBUAT CUSTOM LAYOUT POLOS (DIJAMIN TANPA IKON APLIKASI)
+                            android.widget.LinearLayout container = new android.widget.LinearLayout(MumlaActivity.this);
+                            container.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                            container.setPadding(35, 25, 35, 25);
+
+                            // Background semi-transparan ala Toast standar
+                            android.graphics.drawable.GradientDrawable backgroundDrawable = new android.graphics.drawable.GradientDrawable();
+                            backgroundDrawable.setColor(android.graphics.Color.parseColor("#CC323232")); // Hitam transparan
+                            backgroundDrawable.setCornerRadius(20);
+                            container.setBackground(backgroundDrawable);
+
+                            android.widget.TextView textView = new android.widget.TextView(MumlaActivity.this);
+                            textView.setText(spannable);
+                            textView.setTextColor(android.graphics.Color.WHITE);
+                            textView.setTextSize(14);
+                            textView.setGravity(android.view.Gravity.CENTER);
+                            textView.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
+
+                            container.addView(textView);
+
+                            android.widget.Toast customToast = new android.widget.Toast(getApplicationContext());
+                            customToast.setView(container);
+                            customToast.setDuration(android.widget.Toast.LENGTH_LONG);
+                            customToast.setGravity(android.view.Gravity.BOTTOM | android.view.Gravity.CENTER_HORIZONTAL, 0, 150);
+                            customToast.show();
+
+                            mHasShownWelcomeToast = true;
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                break;
+
+            case CONNECTION_LOST:
+                try {
+                    IMumlaService mumlaService = (IMumlaService) getService();
+                    if (mumlaService != null) {
+                        HumlaException error = mumlaService.getConnectionError();
+
+                        String rawMsg = (error != null && error.getMessage() != null) ? error.getMessage() : "";
+                        String lowerMsg = rawMsg.toLowerCase();
+
+                        // CEK APAKAH INI ERROR SSL / SERTIFIKAT
+                        if (lowerMsg.contains("certificate") || lowerMsg.contains("handshake") || lowerMsg.contains("ssl") || lowerMsg.contains("tls")) {
+
+                            // 1. PERINTAH UTAMA: Paksa service menghentikan seluruh upaya auto-reconnect!
+                            mumlaService.cancelReconnect();
+
+                            // 2. Putus koneksi sepenuhnya
+                            if (mService != null) {
+                                mService.disconnect();
+                            }
+
+                            // 3. Tutup dialog error sebelumnya jika sempat terbuka
+                            if (mErrorDialog != null && mErrorDialog.isShowing()) {
+                                try {
+                                    mErrorDialog.dismiss();
+                                } catch (Exception ignored) {}
+                            }
+
+                            // 4. Tampilkan dialog peringatan biasa (TANPA LOADING / TANPA RECONNECT)
+                            runOnUiThread(() -> {
+                                if (isFinishing() || isDestroyed()) return;
+
+                                new MaterialAlertDialogBuilder(MumlaActivity.this)
+                                        .setTitle("Gagal Verifikasi Sertifikat")
+                                        .setMessage("Sertifikat SSL/TLS server tidak valid atau username sudah digunakan Perangkat lain. Silahkan hubungi Administrator Bid TIK Polda Bali")
+                                        .setPositiveButton("Tutup", (dialog, which) -> {
+                                            dialog.dismiss();
+                                            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                                        })
+                                        .setCancelable(false)
+                                        .show();
+                            });
+
+                            // 5. Hentikan eksekusi agar kode auto-reconnect di bawahnya TIDAK JALAN SAMA SEKALI
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error handling SSL check in CONNECTION_LOST", e);
+                }
+
+                // --- LANJUTAN KODE UNTUK ERROR BIASA (SERVER OFFLINE / INTERNET MATI) ---
+                // (Kode auto-reconnect dengan progress bar spinner Anda ditaruh di bawah sini...)
+                if (sUserCancelledReconnect) {
+                    sUserCancelledReconnect = false;
                     try {
                         IMumlaService mumlaService = (IMumlaService) getService();
                         if (mumlaService != null) {
@@ -1110,28 +1408,23 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                         }
                     } catch (Exception ignored) {}
 
-                    // Tutup dialog jika sempat terbuka
                     if (mErrorDialog != null && mErrorDialog.isShowing()) {
                         try {
                             mErrorDialog.dismiss();
                         } catch (Exception ignored) {}
                     }
-
-                    break; // HENTIKAN! Dialog tidak akan dibuat.
+                    break;
                 }
-                // ------------------------------------------
+
                 try {
                     IMumlaService mumlaService = (IMumlaService) getService();
                     if (mumlaService != null && !mumlaService.isErrorShown()) {
                         HumlaException error = mumlaService.getConnectionError();
-
                         String rawMsg = (error != null && error.getMessage() != null) ? error.getMessage() : "";
                         String lowerMsg = rawMsg.toLowerCase();
                         String errorMsg;
 
-                        if (lowerMsg.contains("certificate") || lowerMsg.contains("handshake") || lowerMsg.contains("ssl") || lowerMsg.contains("tls")) {
-                            errorMsg = "Gagal Verifikasi Sertifikat SSL/TLS";
-                        } else if (lowerMsg.contains("refused") || lowerMsg.contains("unreachable")) {
+                        if (lowerMsg.contains("refused") || lowerMsg.contains("unreachable")) {
                             errorMsg = "Server Offline / Port Tertutup";
                         } else if (lowerMsg.contains("timed out") || lowerMsg.contains("timeout")) {
                             errorMsg = "Koneksi Timeout (Cek IP Server)";
@@ -1141,16 +1434,13 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             errorMsg = "Gagal Terhubung ke Server";
                         }
 
-                        // PERBAIKAN: Panggil reconnect tanpa parameter, atau connect ulang ke target server
+                        final String finalErrorMsg = errorMsg;
+
                         if (mService != null && mService.getTargetServer() != null) {
                             Server target = mService.getTargetServer();
                             mService.disconnect();
-
-                            // Panggil method helper bawaan MumlaActivity
                             connectToServer(target);
                         }
-
-                        final String finalErrorMsg = errorMsg;
 
                         runOnUiThread(() -> {
                             try {
@@ -1160,25 +1450,21 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                                     mErrorDialog.dismiss();
                                 }
 
-                                // MEMBUAT LAYOUT DIALOG VIA JAVA (TANPA FILE XML)
                                 android.widget.LinearLayout layout = new android.widget.LinearLayout(MumlaActivity.this);
                                 layout.setOrientation(android.widget.LinearLayout.VERTICAL);
                                 layout.setPadding(60, 50, 60, 30);
                                 layout.setGravity(android.view.Gravity.CENTER);
 
-                                // 1. Loading Spinner
                                 com.google.android.material.progressindicator.CircularProgressIndicator progressBar =
                                         new com.google.android.material.progressindicator.CircularProgressIndicator(MumlaActivity.this);
                                 progressBar.setIndeterminate(true);
 
-                                // 2. Teks Detail Error
                                 android.widget.TextView tvError = new android.widget.TextView(MumlaActivity.this);
                                 tvError.setText(finalErrorMsg);
                                 tvError.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
                                 tvError.setTextSize(14);
                                 tvError.setPadding(0, 30, 0, 10);
 
-                                // 3. Teks Info Loading Retry
                                 android.widget.TextView tvRetryInfo = new android.widget.TextView(MumlaActivity.this);
                                 tvRetryInfo.setText("Tunggu, mencoba konek ulang ke server...");
                                 tvRetryInfo.setTextAlignment(android.view.View.TEXT_ALIGNMENT_CENTER);
@@ -1212,6 +1498,10 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 } catch (Exception e) {
                     Log.e(TAG, "Error handling CONNECTION_LOST", e);
                 }
+                break;
+
+            case DISCONNECTED:
+                mHasShownWelcomeToast = false;
                 break;
 
             default:

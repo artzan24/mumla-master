@@ -66,6 +66,7 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
 import se.lublin.mumla.service.ipc.TalkBroadcastReceiver;
 import se.lublin.mumla.util.HtmlUtils;
+import android.net.wifi.WifiManager;
 
 /**
  * An extension of the Humla service with some added Mumla-exclusive non-standard Mumble features.
@@ -98,6 +99,8 @@ public class MumlaService extends HumlaService implements
     private PowerManager.WakeLock mProximityLock;
     /** CPU WakeLock agar koneksi tidak terputus saat aplikasi di-minimize/layar mati */
     private PowerManager.WakeLock mCpuWakeLock;
+    private WifiManager.WifiLock wifiLock;
+    private PowerManager.WakeLock wakeLock;
 
     /** Play sound when push to talk key is pressed */
     private boolean mPTTSoundEnabled;
@@ -132,6 +135,22 @@ public class MumlaService extends HumlaService implements
                 logWarning(getString(R.string.tts_failed));
         }
     };
+
+    private void acquireLocks() {
+        // 1. Mencegah CPU tertidur (WakeLock)
+        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager != null && (wakeLock == null || !wakeLock.isHeld())) {
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Mumla::KeepAliveWakeLock");
+            wakeLock.acquire(10 * 60 * 60 * 1000L); // Tahan selama max 10 jam (atau atur sesuai kebutuhan)
+        }
+
+        // 2. Mencegah WiFi terputus saat standby (WifiLock)
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wifiManager != null && (wifiLock == null || !wifiLock.isHeld())) {
+            wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Mumla::KeepAliveWifiLock");
+            wifiLock.acquire();
+        }
+    }
 
     /** The view representing the hot corner. */
     private MumlaHotCorner mHotCorner;
@@ -403,10 +422,9 @@ public class MumlaService extends HumlaService implements
     @Override
     public void onCreate() {
         super.onCreate();
-
+        acquireLocks();
         // Aktifkan Foreground Service HANYA SEKALI saat service hidup
         startForegroundServiceWithNotification();
-
         registerObserver(mObserver);
 
         mSettings = Settings.getInstance(this);
@@ -471,6 +489,21 @@ public class MumlaService extends HumlaService implements
         mMessageLog = null;
         mMessageNotification.dismiss();
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // Restart service jika user menghapus aplikasi dari recent apps
+        Intent restartService = new Intent(getApplicationContext(), this.getClass());
+        restartService.setPackage(getPackageName());
+        PendingIntent restartServicePI = PendingIntent.getService(
+                getApplicationContext(), 1, restartService,
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
+
+        android.app.AlarmManager alarmService = (android.app.AlarmManager)getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+        alarmService.set(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 1000, restartServicePI);
+
+        super.onTaskRemoved(rootIntent);
     }
 
     private final Handler mBackgroundSyncHandler = new Handler(Looper.getMainLooper());
@@ -743,29 +776,24 @@ public class MumlaService extends HumlaService implements
     private void startForegroundServiceWithNotification() {
         if (mIsForegroundStarted) return;
 
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-
+        // Pastikan channel notifikasi sudah ada (Penting untuk Android O+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Layanan Koneksi Mumble",
                     NotificationManager.IMPORTANCE_LOW
             );
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+            manager.createNotificationChannel(channel);
         }
 
-        Intent notificationIntent = new Intent(MumlaService.this, MumlaActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                MumlaService.this,
-                0,
-                notificationIntent,
-                PendingIntent.FLAG_IMMUTABLE
-        );
+        // PendingIntent dengan FLAG_IMMUTABLE/MUTABLE disesuaikan
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0;
+        Intent notificationIntent = new Intent(this, MumlaActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, flags);
 
-        Notification notification = new NotificationCompat.Builder(MumlaService.this, CHANNEL_ID)
-                .setContentTitle("Terhubung ke Server Mumble")
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Mumla Terhubung")
                 .setContentText("Aplikasi berjalan di background")
                 .setSmallIcon(R.drawable.tik_polri_android)
                 .setContentIntent(pendingIntent)
@@ -773,10 +801,17 @@ public class MumlaService extends HumlaService implements
                 .build();
 
         try {
-            startForeground(FOREGROUND_NOTIFICATION_ID, notification);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14 memerlukan tipe foreground service
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                startForeground(FOREGROUND_NOTIFICATION_ID, notification);
+            }
             mIsForegroundStarted = true;
         } catch (Exception e) {
-            Log.e(TAG, "Gagal memulai Foreground Notification: " + e.getMessage());
+            // Jika gagal karena background restriction, aplikasi tetap harus jalan
+            Log.e(TAG, "Gagal startForeground: " + e.getMessage());
         }
     }
 
