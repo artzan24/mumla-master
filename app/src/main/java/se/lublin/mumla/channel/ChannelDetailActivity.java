@@ -195,9 +195,9 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 if (session != null) {
                                     try {
                                         session.setTalkingState(false);
-                                        if (session.getSessionUser() != null) {
-                                            sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
-                                        }
+                                        //if (session.getSessionUser() != null) {
+                                            //sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
+                                        //}
                                         session.joinChannel(1);
                                     } catch (Exception ex) {
                                         Log.e(TAG, "Error forcing leave channel: " + ex.getMessage());
@@ -453,7 +453,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 IHumlaSession session = mService.HumlaSession();
                                 if (session != null) {
                                     session.setTalkingState(true);
-                                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
+                                    //sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
                                 }
                             } catch (Exception e) {
                                 Log.e(TAG, "Error starting talk: " + e);
@@ -477,7 +477,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                                 IHumlaSession session = mService.HumlaSession();
                                 if (session != null) {
                                     session.setTalkingState(false);
-                                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
+                                    //sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                                 }
                             } catch (Exception e) {
                                 Log.e(TAG, "Error stopping talk: " + e);
@@ -800,7 +800,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 IHumlaSession session = mService.HumlaSession();
                 if (session != null) {
                     session.setTalkingState(true);
-                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
+                    //sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "speak");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error starting talk via physical key: " + e);
@@ -830,7 +830,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
                 IHumlaSession session = mService.HumlaSession();
                 if (session != null) {
                     session.setTalkingState(false);
-                    sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
+                    //sendPttDataToApi(session.getSessionUser().getName(), String.valueOf(mChannelId), "release");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error stopping talk via physical key: " + e);

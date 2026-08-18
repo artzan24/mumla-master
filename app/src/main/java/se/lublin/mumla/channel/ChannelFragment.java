@@ -113,13 +113,13 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                             // Mengubah background & border tombol secara langsung menjadi HIJAU saat aktif/bicara
                             mTalkButton.setBackgroundResource(R.drawable.ptt_button_active_bg);
                             //Kirim Data ke CI4 tekan tombol PTT layout dan fisik
-                            sendPttDataToApi(username, channelId, "speak");
+                            //sendPttDataToApi(username, channelId, "speak");
                             break;
                         case PASSIVE:
                             mTalkButton.setPressed(false);
                             // Mengembalikan background & border tombol ke warna normal (Oranye)
                             mTalkButton.setBackgroundResource(R.drawable.ptt_button_normal_bg);
-                            sendPttDataToApi(username, channelId, "release");
+                            //sendPttDataToApi(username, channelId, "release");
                             break;
                     }
                 }
@@ -496,7 +496,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                                 String.valueOf(session.getSessionChannel().getId()) : "0";
 
                         // KIRIM PAKSA STATUS RELEASE KE API CI4
-                        sendPttDataToApi(username, channelId, "release");
+                        //sendPttDataToApi(username, channelId, "release");
                     }
                 }
 

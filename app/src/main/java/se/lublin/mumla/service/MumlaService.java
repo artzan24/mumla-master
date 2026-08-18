@@ -86,7 +86,7 @@ public class MumlaService extends HumlaService implements
     public static final int TTS_THRESHOLD = 250; // Maximum number of characters to read
     public static final int RECONNECT_DELAY = 10000;
     private static final int BASE_RECONNECT_DELAY = 3000; // Mulai dari 3 detik
-    private static final int MAX_RECONNECT_DELAY = 60000;
+    private static final int MAX_RECONNECT_DELAY = 30000;
     private boolean mUserRequestedDisconnect = false;
 
     private Settings mSettings;
