@@ -14,6 +14,9 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:descendantFocusability="afterDescendants"
             app:navigationIcon="?attr/homeAsUpIndicator" />
 
     </com.google.android.material.appbar.AppBarLayout>
@@ -22,6 +25,7 @@
         android:id="@+id/settings_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:focusable="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
 </LinearLayout>

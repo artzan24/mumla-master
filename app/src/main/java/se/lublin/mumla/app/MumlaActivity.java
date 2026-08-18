@@ -65,6 +65,7 @@ import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.preference.PreferenceManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -697,7 +698,24 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         super.onResume();
 
         // =========================================================================
-        // 0. CEK JIKA DIPANGGIL DARI LOGOUT PAKSA (ChannelDetailActivity)
+        // 0. PAKSA FOKUS KONTROL FISIK / TOTAL CONTROL KE ACTIVITY INI
+        // =========================================================================
+        DrawerLayout drawerLayout = findViewById(R.id.drawer_layout);
+        if (drawerLayout != null) {
+            drawerLayout.setFocusable(true);
+            drawerLayout.setFocusableInTouchMode(true);
+            drawerLayout.requestFocus();
+        }
+
+        View contentView = findViewById(R.id.content_frame);
+        if (contentView != null) {
+            contentView.setFocusable(true);
+            contentView.setFocusableInTouchMode(true);
+            contentView.requestFocus();
+        }
+
+        // =========================================================================
+        // 1. CEK JIKA DIPANGGIL DARI LOGOUT PAKSA (ChannelDetailActivity)
         // =========================================================================
         if (getIntent() != null && getIntent().getBooleanExtra("EXTRA_SHOW_SERVER_LIST", false)) {
             // Hapus extra agar tidak terus terpicu pada resume normal berikutnya
@@ -712,7 +730,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 Log.e("MumlaActivity", "Gagal mengganti ke ServerList: " + e.getMessage());
             }
         }
-        // 2. Handling Batal/Keluar Reconnect dari ChannelDetailActivity (Tambahkan Bagian Ini)
+        // 2. Handling Batal/Keluar Reconnect dari ChannelDetailActivity
         if (sUserCancelledReconnect) {
             if (mErrorDialog != null && mErrorDialog.isShowing()) {
                 try {
@@ -725,12 +743,12 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         Intent connectIntent = new Intent(this, MumlaService.class);
         bindService(connectIntent, mConnection, 0);
 
-        // 1. REFRESH LANGSUNG SAAT RESUME / DARI SPLASH
+        // Refresh langsung saat resume / dari splash
         if (mService != null && mService.isConnected()) {
             fetchAllowedChannelsFromApi();
         }
 
-        // 2. NYALAKAN POLLING BERKALA SELANJUTNYA (Setiap 30 detik)
+        // Nyalakan polling berkala selanjutnya (Setiap 30 detik)
         if (mChannelSyncHandler != null && mChannelSyncRunnable != null) {
             mChannelSyncHandler.postDelayed(mChannelSyncRunnable, 30000);
         }
@@ -871,6 +889,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Cek apakah tombol yang ditekan adalah tombol PTT yang dikonfigurasi
         if (mService != null && keyCode == mSettings.getPushToTalkKey()) {
             if (event.getRepeatCount() > 0) {
                 return true;
@@ -884,11 +903,49 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             mService.onTalkKeyDown();
             return true;
         }
+
+        // Tangani tombol OK / Center untuk memicu klik pada item list yang sedang difokuskan
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            View focusedView = getCurrentFocus();
+            if (focusedView != null) {
+                focusedView.performClick(); // Memicu aksi klik item yang sedang disorot
+                return true;
+            }
+        }
+
+        // Tangani tombol Panah Atas agar bisa melompat ke Toolbar jika berada di channel teratas
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            View focusedView = getCurrentFocus();
+            if (focusedView != null && focusedView.getParent() instanceof RecyclerView) {
+                RecyclerView recyclerView = (RecyclerView) focusedView.getParent();
+                RecyclerView.ViewHolder viewHolder = recyclerView.getChildViewHolder(focusedView);
+
+                // Jika ini adalah item paling atas di daftar channel (posisi 0)
+                if (viewHolder != null && viewHolder.getAdapterPosition() == 0) {
+                    // Cari tombol/ikon di Toolbar (misalnya ikon Settings di pojok kiri atas)
+                    View toolbarAction = findViewById(R.id.toolbar); // Sesuaikan ID elemen di toolbar
+                    if (toolbarAction != null) {
+                        toolbarAction.requestFocus();
+                        return true;
+                    }
+                }
+            }
+            return super.onKeyDown(keyCode, event);
+        }
+
+        // Tombol panah lainnya (Bawah, Kiri, Kanan) biarkan sistem yang menangani perpindahan fokusnya
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            return super.onKeyDown(keyCode, event);
+        }
+
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
+        // Tangani pelepasan tombol PTT
         if (mService != null && keyCode == mSettings.getPushToTalkKey()) {
             if (mIsPttBlocked) {
                 mIsPttBlocked = false;

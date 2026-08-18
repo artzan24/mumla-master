@@ -33,6 +33,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -188,6 +189,25 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         View view = inflater.inflate(R.layout.fragment_channel_list, container, false);
         mChannelView = (RecyclerView) view.findViewById(R.id.channelUsers);
         mChannelView.setLayoutManager(new LinearLayoutManager(getActivity()));
+
+        mChannelView.setFocusable(true);
+        mChannelView.setFocusableInTouchMode(true);
+
+        mChannelView.setOnKeyListener(new View.OnKeyListener() {
+            @Override
+            public boolean onKey(View v, int keyCode, KeyEvent event) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                        View focusedChild = mChannelView.getFocusedChild();
+                        if (focusedChild != null) {
+                            focusedChild.performClick(); // Memicu klik pada channel/user yang disorot
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+        });
 
         // Tangkap TextView "Tidak ada" dari layout
         mEmptyView = (TextView) view.findViewById(R.id.empty_search_view);

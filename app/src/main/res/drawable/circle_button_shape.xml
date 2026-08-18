@@ -1,26 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+
     <!-- State saat tombol DITEKAN -->
     <item android:state_pressed="true">
-        <shape android:shape="oval">
-            <solid android:color="?attr/pttPressed" />
-            <stroke android:width="5dp" android:color="#FF9800" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="?attr/pttPressed" />
+                    <stroke android:width="5dp" android:color="#FF9800" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
 
-    <!-- State saat tombol AKTIF / SELECTED (Garis pinggir jadi HIJAU TEBAL) -->
+    <!-- State saat tombol AKTIF / SELECTED -->
     <item android:state_selected="true">
-        <shape android:shape="oval">
-            <solid android:color="?attr/pttPressed" />
-            <stroke android:width="5dp" android:color="#4CAF50" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="?attr/pttPressed" />
+                    <stroke android:width="5dp" android:color="#4CAF50" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
 
-    <!-- State NORMAL (Garis pinggir ORANYE TEBAL) -->
+    <!-- State NORMAL -->
     <item>
-        <shape android:shape="oval">
-            <solid android:color="?attr/colorPrimary" />
-            <stroke android:width="5dp" android:color="#FF9800" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="?attr/colorPrimary" />
+                    <stroke android:width="5dp" android:color="#FF9800" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
+
 </selector>
