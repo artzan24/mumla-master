@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Background saat tombol/ikon sedang difokuskan (lebih terang, misal putih 30%) -->
+    <!-- Background saat tombol sedang difokuskan (lebih terang/jelas, misal putih 30%) -->
     <item android:state_focused="true">
         <shape android:shape="oval">
-            <solid android:color="#4DFFFFFF" />
+            <solid android:color="#4DFFFFFF" /> <!-- 4D adalah tingkat transparan lebih tinggi dari 1A -->
             <size android:width="40dp" android:height="40dp" />
         </shape>
     </item>

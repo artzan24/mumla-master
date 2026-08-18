@@ -22,6 +22,7 @@ import android.content.res.TypedArray;
 import android.os.Bundle;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -670,6 +671,8 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
                     return null;
             }
         }
+
+
 
         @Override
         public int getCount() {

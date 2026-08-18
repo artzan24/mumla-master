@@ -762,7 +762,8 @@ public class ChannelDetailActivity extends AppCompatActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         int pttKey = se.lublin.mumla.Settings.getInstance(this).getPushToTalkKey();
 
-        if (mService != null && keyCode == pttKey) {
+        // Gunakan pttKey dari pengaturan, atau kode 283 (KEYCODE_PTT), atau 310 untuk Hytera
+        if (mService != null && (keyCode == pttKey || keyCode == 283 || keyCode == 310)) {
             if (event.getRepeatCount() > 0) {
                 return true;
             }
@@ -814,7 +815,7 @@ public class ChannelDetailActivity extends AppCompatActivity {
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         int pttKey = se.lublin.mumla.Settings.getInstance(this).getPushToTalkKey();
 
-        if (mService != null && keyCode == pttKey) {
+        if (mService != null && (keyCode == pttKey || keyCode == 283 || keyCode == 310)) {
             if (mBtnPtt != null) {
                 mBtnPtt.setPressed(false);
                 mBtnPtt.setSelected(false);

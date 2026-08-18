@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
@@ -11,22 +12,23 @@
         android:background="#121212"
         android:orientation="vertical">
 
-        <!-- Tetap sediakan AppBar dan Toolbar agar findViewById(R.id.toolbar) tidak error -->
         <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             style="@style/TweakedAppBarLayout">
 
+            <!-- Pastikan Toolbar bisa fokus dan mendukung navigasi D-pad ke anak elemennya -->
             <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:descendantFocusability="afterDescendants"
                 app:popupTheme="?attr/popupOverlay"
                 app:title="@string/app_name" />
-
         </com.google.android.material.appbar.AppBarLayout>
 
-        <!-- Frame layout utama untuk menampung fragment (Diset match_parent & visible) -->
         <FrameLayout
             android:id="@+id/content_frame"
             android:layout_width="match_parent"
@@ -42,8 +44,7 @@
         android:layout_gravity="start"
         android:background="?colorPrimaryDark"
         android:choiceMode="singleChoice"
-        android:divider="@android:color/transparent"
-        android:dividerHeight="0dp"
+        android:focusable="true"
         android:fitsSystemWindows="true" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

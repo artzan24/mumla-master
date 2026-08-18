@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Warna saat sudah join (terang/hijau) -->
+    <!-- Warna saat ikon sedang difokuskan (sedikit lebih terang/jelas) -->
+    <item android:color="#B0BEC5" android:state_focused="true" />
+
+    <!-- Warna saat sudah join (terang/putih) -->
     <item android:color="#FFFFFF" android:state_activated="true" />
     <item android:color="#FFFFFF" android:state_checked="true" />
 
