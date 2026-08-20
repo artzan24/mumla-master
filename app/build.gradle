@@ -54,13 +54,13 @@ android {
 
     base {
         //archivesName = "mumla"
-        archivesName = "roip-tik-bali"
+        archivesName = "roip-tik-bali-poc"
     }
 
     // Tambahkan blok ini tepat di bawah blok base atau di dalam blok android
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            outputFileName = "roip-tik-bali.apk"
+            outputFileName = "roip-tik-bali-poc.apk"
         }
     }
 

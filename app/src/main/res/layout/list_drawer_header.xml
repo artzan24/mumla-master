@@ -31,6 +31,6 @@
             android:padding="8dp"
             android:textAllCaps="true"
             android:textStyle="bold"
-            android:textSize="12sp"
+            android:textSize="16sp"
             android:layout_gravity="left|center_vertical"/>
 </LinearLayout>

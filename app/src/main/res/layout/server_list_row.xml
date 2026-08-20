@@ -30,7 +30,7 @@
             android:layout_height="wrap_content"
             android:text="Username atau NRP"
             android:textColor="#B0BEC5"
-            android:textSize="12sp"
+            android:textSize="18sp"
             android:fontFamily="sans-serif-medium"
             android:layout_marginBottom="4dp" />
 
@@ -42,7 +42,7 @@
             android:inputType="text"
             android:textColor="#000000"
             android:textColorHint="#757575"
-            android:textSize="12sp"
+            android:textSize="20sp"
             android:fontFamily="sans-serif"
             android:background="@drawable/bg_edit_text"
             android:focusable="true"
@@ -71,7 +71,7 @@
             android:layout_height="wrap_content"
             android:text="Password"
             android:textColor="#B0BEC5"
-            android:textSize="12sp"
+            android:textSize="18sp"
             android:fontFamily="sans-serif-medium"
             android:layout_marginBottom="4dp" />
 
@@ -87,9 +87,9 @@
             android:clickable="false"
             android:paddingStart="10dp"
             android:paddingEnd="10dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
-            android:layout_marginBottom="10dp">
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:layout_marginBottom="12dp">
 
             <EditText
                 android:id="@+id/server_row_edit_password"
@@ -101,7 +101,7 @@
                 android:fontFamily="sans-serif"
                 android:textColor="#000000"
                 android:textColorHint="#757575"
-                android:textSize="12sp"
+                android:textSize="20sp"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
                 android:clickable="true"
@@ -124,10 +124,10 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_row_connect"
             android:layout_width="match_parent"
-            android:layout_height="42dp"
+            android:layout_height="50dp"
             android:text="CONNECT"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="20sp"
             android:fontFamily="sans-serif-medium"
             android:focusable="true"
             android:focusableInTouchMode="true"

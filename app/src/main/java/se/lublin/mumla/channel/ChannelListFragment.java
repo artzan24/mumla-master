@@ -292,8 +292,16 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
 
             if (service != null && service.isConnected()) {
                 IHumlaSession session = service.HumlaSession();
-                if (session != null && session.getSessionChannel().getId() == 0) {
-                    session.joinChannel(1);
+                if (session != null) {
+                    // Jika channel session masih 0, join ke channel 1 (sesuai kode asli Anda)
+                    if (session.getSessionChannel().getId() == 0) {
+                        session.joinChannel(1);
+                    } else {
+                        // --- TAMBAHKAN INI: Otomatis scroll ke channel yang sedang di-join ---
+                        int activeChannelId = session.getSessionChannel().getId();
+                        // Beri sedikit jeda post agar RecyclerView selesai merender layout list-nya
+                        mChannelView.post(() -> scrollToChannel(activeChannelId));
+                    }
                 }
             }
 

@@ -149,6 +149,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private static final String TAG = MumlaActivity.class.getName();
     public static boolean sUserCancelledReconnect = false;
     private final Handler mChannelSyncHandler = new Handler(Looper.getMainLooper());
+    private final boolean[] isBackAlreadyPressedWhenEmpty = {false};
+    private final boolean[] isReadyToClose = {false};
+    private final long[] lastDeleteTime = {0};
     private final Runnable mChannelSyncRunnable = new Runnable() {
         @Override
         public void run() {
@@ -335,23 +338,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         ImageButton btnSearch = findViewById(R.id.btn_toolbar_search);
         ImageButton btnOverflow = findViewById(R.id.btn_toolbar_overflow);
         ImageButton btnToolbarBack = findViewById(R.id.btn_toolbar_back);
-        androidx.appcompat.widget.SearchView searchViewToolbar = findViewById(R.id.search_view_toolbar);
 
-        if (btnSettings != null) {
-            View.OnClickListener settingsListener = v -> {
-                Intent intent = new Intent(MumlaActivity.this, SettingsActivity.class);
-                startActivity(intent);
-            };
-            btnSettings.setOnClickListener(settingsListener);
-            btnSettings.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() == KeyEvent.ACTION_DOWN &&
-                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                    settingsListener.onClick(v);
-                    return true;
-                }
-                return false;
-            });
-        }
+        // Inisialisasi global searchViewToolbar (hapus deklarasi 'androidx.appcompat.widget.SearchView' lokal di bawahnya)
+        searchViewToolbar = findViewById(R.id.search_view_toolbar);
 
         if (btnSearch != null && searchViewToolbar != null) {
             View.OnClickListener searchClickListener = v -> {
@@ -361,7 +350,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 }
 
                 if (btnToolbarBack != null) {
-                    btnToolbarBack.setVisibility(View.VISIBLE);
+                    btnToolbarBack.setVisibility(View.VISIBLE); // Tombol back muncul normal
                 }
 
                 searchViewToolbar.setVisibility(View.VISIBLE);
@@ -371,55 +360,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 if (searchEditText instanceof android.widget.EditText) {
                     android.widget.EditText editText = (android.widget.EditText) searchEditText;
 
-                    // Memaksa format teks biasa
                     editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
                     editText.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT);
                     editText.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
 
                     editText.requestFocus();
-
-                    editText.setOnKeyListener((view, keyCode, event) -> {
-                        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
-                            if (keyCode == android.view.KeyEvent.KEYCODE_DEL || keyCode == android.view.KeyEvent.KEYCODE_BACK) {
-                                String currentText = editText.getText().toString();
-
-                                // Log saat tombol back/delete fisik ditekan
-                                Log.d("HYTERA_SEARCH", "Tombol Back/Delete ditekan. Isi teks saat ini: [" + currentText + "]");
-
-                                // Jika teks TIDAK KOSONG, hapus huruf/karakter terakhir (Backspace)
-                                if (!currentText.isEmpty()) {
-                                    Log.d("HYTERA_SEARCH", "Aksi: Menghapus 1 karakter (Backspace)");
-                                    int selectionStart = editText.getSelectionStart();
-                                    int selectionEnd = editText.getSelectionEnd();
-
-                                    if (selectionStart > 0) {
-                                        android.text.Editable editable = editText.getText();
-                                        if (selectionStart == selectionEnd) {
-                                            editable.delete(selectionStart - 1, selectionStart);
-                                        } else {
-                                            editable.delete(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
-                                        }
-                                    } else if (currentText.length() > 0) {
-                                        editText.setText(currentText.substring(0, currentText.length() - 1));
-                                        editText.setSelection(editText.getText().length());
-                                    }
-                                    return true;
-                                } else {
-                                    // Jika teks KOSONG, jalankan fungsi kembali / tutup search
-                                    Log.d("HYTERA_SEARCH", "Aksi: Teks kosong, menutup pencarian / kembali");
-                                    closeSearchView();
-                                    return true;
-                                }
-                            }
-                        }
-                        return false;
-                    });
                 }
             };
 
             btnSearch.setOnClickListener(searchClickListener);
 
-            // Sembunyikan ikon kaca pembesar bawaan SearchView agar tidak double
+            // Sembunyikan ikon kaca pembesar bawaan SearchView
             ImageView searchIcon = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_mag_icon);
             if (searchIcon != null) {
                 searchIcon.setImageResource(android.R.color.transparent);
@@ -430,75 +381,64 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 searchIcon.setVisibility(View.GONE);
             }
 
-            // 1. Tangani Tombol Back Kustom di Kiri
             if (btnToolbarBack != null) {
-                Runnable closeSearchAction = () -> {
-                    Log.d("HYTERA_SEARCH", "Aksi menutup search via tombol back kustom");
-                    closeSearchView(); // Panggil method untuk menyembunyikan seluruh SearchView dan tombol back
-                };
+                btnToolbarBack.setOnClickListener(v -> closeSearchView());
 
-                btnToolbarBack.setOnClickListener(v -> closeSearchAction.run());
+                btnToolbarBack.setOnFocusChangeListener((v, hasFocus) -> {
+                    if (hasFocus && searchViewToolbar != null && searchViewToolbar.getVisibility() == View.VISIBLE) {
+                        View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                        if (searchEditText instanceof android.widget.EditText) {
+                            android.widget.EditText editText = (android.widget.EditText) searchEditText;
+                            String currentText = editText.getText().toString();
 
-                btnToolbarBack.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        Log.d("HYTERA_SEARCH", "BtnToolbarBack KeyDown - KeyCode: " + keyCode);
+                            // Jika teks BELUM KOSONG -> Hapus 1 huruf
+                            if (!currentText.isEmpty()) {
+                                // Setiap kali masih ada teks, pastikan flag close di-reset
+                                isReadyToClose[0] = false;
 
-                        // Jika tombol Back (KeyCode 4) atau Del ditekan pada tombol back kustom
-                        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DEL) {
-                            // Ambil referensi EditText search
-                            View searchEditTextRef = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
-                            if (searchEditTextRef instanceof android.widget.EditText) {
-                                android.widget.EditText editTextRef = (android.widget.EditText) searchEditTextRef;
-                                String currentText = editTextRef.getText().toString();
+                                long currentTime = System.currentTimeMillis();
+                                if (currentTime - lastDeleteTime[0] > 200) {
+                                    lastDeleteTime[0] = currentTime;
 
-                                if (!currentText.isEmpty()) {
-                                    // Jika teks TIDAK KOSONG, hapus 1 karakter terakhir (Backspace)
-                                    Log.d("HYTERA_SEARCH", "Teks tidak kosong, menghapus 1 karakter via tombol back kustom");
-                                    int selectionStart = editTextRef.getSelectionStart();
+                                    Log.d("HYTERA_SEARCH", "Menghapus 1 karakter");
+
+                                    int selectionStart = editText.getSelectionStart();
                                     if (selectionStart > 0) {
-                                        editTextRef.getText().delete(selectionStart - 1, selectionStart);
+                                        editText.getText().delete(selectionStart - 1, selectionStart);
                                     } else {
-                                        editTextRef.setText(currentText.substring(0, currentText.length() - 1));
-                                        editTextRef.setSelection(editTextRef.getText().length());
+                                        editText.setText(currentText.substring(0, currentText.length() - 1));
+                                        editText.setSelection(editText.getText().length());
                                     }
+                                }
+                                editText.requestFocus();
+                            }
+                            // Jika teks SUDAH KOSONG
+                            else {
+                                long currentTime = System.currentTimeMillis();
+                                if (currentTime - lastDeleteTime[0] > 300) {
+                                    lastDeleteTime[0] = currentTime;
 
-                                    // --- TAMBAHAN: KEMBALIKAN FOKUS KE EDITTEXT DAN SEMBUNYIKAN TOMBOL BACK ---
-                                    btnToolbarBack.setVisibility(View.GONE);
-                                    editTextRef.requestFocus();
-                                    editTextRef.setSelection(editTextRef.getText().length());
-                                    // ------------------------------------------------------------------------
-
-                                    return true;
+                                    // Jika belum siap tutup, set jadi true dulu (artinya huruf baru saja habis dibersihkan)
+                                    if (!isReadyToClose[0]) {
+                                        isReadyToClose[0] = true;
+                                        Log.d("HYTERA_SEARCH", "Teks sudah bersih. Tekan sekali lagi untuk keluar search.");
+                                        editText.requestFocus();
+                                    } else {
+                                        // Jika sudah ditekan sekali lagi dalam keadaan kosong, baru tutup search!
+                                        isReadyToClose[0] = false;
+                                        Log.d("HYTERA_SEARCH", "Menutup search.");
+                                        closeSearchView();
+                                    }
+                                } else {
+                                    editText.requestFocus();
                                 }
                             }
-
-                            // Jika teks KOSONG, tutup seluruh pencarian
-                            closeSearchAction.run();
-                            return true;
-                        }
-                        else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                            // Jika tekan panah kanan dari tombol back, kembali masuk ke EditText di awal teks
-                            btnToolbarBack.setVisibility(View.GONE);
-                            View searchEditTextRef = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
-                            if (searchEditTextRef instanceof android.widget.EditText) {
-                                android.widget.EditText editTextRef = (android.widget.EditText) searchEditTextRef;
-                                editTextRef.requestFocus();
-                                editTextRef.setSelection(0);
-                                Log.d("HYTERA_SEARCH", "Kembali ke EditText dari tombol back kustom");
-                                return true;
-                            }
-                        } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
-                            // Jika tombol tengah/enter ditekan pada tombol back, tutup seluruh pencarian
-                            closeSearchAction.run();
-                            return true;
                         }
                     }
-                    return false;
                 });
             }
 
-            // 2. Tangani input teks dan tombol fisik di dalam EditText
-            // 2. Tangani input teks dan tombol fisik di dalam EditText
+            // Tangani TextWatcher dan KeyListener langsung di dalam EditText
             View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
             if (searchEditText instanceof android.widget.EditText) {
                 android.widget.EditText editText = (android.widget.EditText) searchEditText;
@@ -509,64 +449,37 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                     @Override
                     public void onTextChanged(CharSequence s, int start, int before, int count) {
                         Log.d("HYTERA_SEARCH", "Teks berubah: " + s.toString());
+
+                        // Jika ada ketikan baru, batalkan status siap tutup
+                        if (s.length() > 0) {
+                            isReadyToClose[0] = false;
+                        }
+
                         filterChannels(s.toString());
                     }
                     @Override
                     public void afterTextChanged(android.text.Editable s) {}
                 });
 
+                // --- INI KUNCINYA: Tangkap tombol Back/Del langsung di komponen teks aktif ---
                 editText.setOnKeyListener((v, keyCode, event) -> {
                     if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        // Tangani tombol BACK atau DEL langsung dari dalam EditText
                         if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DEL) {
                             String currentText = editText.getText().toString();
-                            int selStart = editText.getSelectionStart();
 
-                            // Jika teks TIDAK KOSONG, hapus karakter (Backspace) TANPA PINDAH FOKUS
                             if (!currentText.isEmpty()) {
-                                Log.d("HYTERA_SEARCH", "EditText KeyDown - Menghapus karakter, fokus tetap di teks");
-                                if (selStart > 0) {
-                                    editText.getText().delete(selStart - 1, selStart);
-                                } else if (currentText.length() > 0) {
+                                Log.d("HYTERA_SEARCH", "Menghapus 1 karakter");
+                                int selectionStart = editText.getSelectionStart();
+                                if (selectionStart > 0) {
+                                    editText.getText().delete(selectionStart - 1, selectionStart);
+                                } else {
                                     editText.setText(currentText.substring(0, currentText.length() - 1));
                                     editText.setSelection(editText.getText().length());
                                 }
-                                return true; // Tangani event agar tidak lari ke tombol back
+                                return true;
                             } else {
-                                // Jika teks SUDAH KOSONG, baru pindahkan fokus ke tombol back kustom
-                                if (btnToolbarBack != null) {
-                                    btnToolbarBack.setVisibility(View.VISIBLE);
-                                    btnToolbarBack.requestFocus();
-                                    Log.d("HYTERA_SEARCH", "Teks kosong, fokus pindah ke tombol back");
-                                    return true;
-                                }
-                            }
-                        }
-                        else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                            int selStart = editText.getSelectionStart();
-                            CharSequence currentText = editText.getText();
-                            int textLength = currentText != null ? currentText.length() : 0;
-
-                            if (selStart >= textLength) {
-                                View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
-                                if (closeButton != null) {
-                                    closeButton.requestFocus();
-                                    Log.d("HYTERA_SEARCH", "Fokus dipindah ke tombol close (X)");
-                                    return true;
-                                }
-                            }
-                        }
-                        else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                            int selStart = editText.getSelectionStart();
-                            Log.d("HYTERA_SEARCH", "DPAD_LEFT - Kursor di: " + selStart);
-
-                            if (selStart <= 0) {
-                                if (btnToolbarBack != null) {
-                                    btnToolbarBack.setVisibility(View.VISIBLE);
-                                    btnToolbarBack.requestFocus();
-                                    Log.d("HYTERA_SEARCH", "Otomatis pindah fokus ke tombol back kustom (kiri)");
-                                    return true;
-                                }
+                                closeSearchView();
+                                return true;
                             }
                         }
                     }
@@ -574,25 +487,15 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 });
             }
 
-            // 3. Tangani Tombol Close (ikon X) di Kanan
+            // Tombol Close (ikon X) di Kanan
             View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
             if (closeButton != null) {
                 closeButton.setClickable(true);
                 closeButton.setEnabled(true);
                 closeButton.setFocusable(true);
                 closeButton.setFocusableInTouchMode(true);
-                closeButton.setBackgroundResource(R.drawable.bg_back_selector);
-
-                ViewGroup.LayoutParams params = closeButton.getLayoutParams();
-                if (params != null) {
-                    float density = getResources().getDisplayMetrics().density;
-                    params.width = (int) (40 * density);
-                    params.height = (int) (40 * density);
-                    closeButton.setLayoutParams(params);
-                }
 
                 Runnable clearSearchAction = () -> {
-                    Log.d("HYTERA_SEARCH", "Aksi clearSearchAction dieksekusi");
                     searchViewToolbar.setQuery("", false);
                     if (searchEditText instanceof android.widget.EditText) {
                         ((android.widget.EditText) searchEditText).requestFocus();
@@ -601,23 +504,94 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 };
 
                 closeButton.setOnClickListener(v -> clearSearchAction.run());
+            }
+        }
 
-                closeButton.setOnKeyListener((v, keyCode, event) -> {
-                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                            if (searchEditText instanceof android.widget.EditText) {
-                                android.widget.EditText editText = (android.widget.EditText) searchEditText;
-                                editText.requestFocus();
-                                editText.setSelection(editText.getText().length());
-                                return true;
-                            }
-                        } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
-                            clearSearchAction.run();
-                            return true;
+        if (btnSearch != null && searchViewToolbar != null) {
+            View.OnClickListener searchClickListener = v -> {
+                Log.d("HYTERA_SEARCH", "Tombol search diklik, membuka SearchView");
+                if (getSupportActionBar() != null) {
+                    getSupportActionBar().setTitle("");
+                }
+
+                if (btnToolbarBack != null) {
+                    btnToolbarBack.setVisibility(View.VISIBLE); // Tombol back muncul normal
+                }
+
+                searchViewToolbar.setVisibility(View.VISIBLE);
+                searchViewToolbar.setIconified(false);
+
+                View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                if (searchEditText instanceof android.widget.EditText) {
+                    android.widget.EditText editText = (android.widget.EditText) searchEditText;
+
+                    editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                    editText.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT);
+                    editText.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+
+                    editText.requestFocus();
+                }
+            };
+
+            btnSearch.setOnClickListener(searchClickListener);
+
+            // Sembunyikan ikon kaca pembesar bawaan SearchView
+            ImageView searchIcon = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_mag_icon);
+            if (searchIcon != null) {
+                searchIcon.setImageResource(android.R.color.transparent);
+                searchIcon.setMinimumWidth(0);
+                searchIcon.setMinimumHeight(0);
+                searchIcon.getLayoutParams().width = 0;
+                searchIcon.getLayoutParams().height = 0;
+                searchIcon.setVisibility(View.GONE);
+            }
+
+            // Tombol Back Kustom di Toolbar
+            if (btnToolbarBack != null) {
+                btnToolbarBack.setOnClickListener(v -> closeSearchView());
+            }
+
+            // Tangani TextWatcher untuk filtering
+            View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+            if (searchEditText instanceof android.widget.EditText) {
+                android.widget.EditText editText = (android.widget.EditText) searchEditText;
+
+                editText.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                        Log.d("HYTERA_SEARCH", "Teks berubah: " + s.toString());
+
+                        // Reset status back jika pengguna mengetik huruf baru
+                        if (s.length() > 0) {
+                            isBackAlreadyPressedWhenEmpty[0] = false;
                         }
+
+                        filterChannels(s.toString());
                     }
-                    return false;
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {}
                 });
+            }
+
+            // Tombol Close (ikon X) di Kanan
+            View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
+            if (closeButton != null) {
+                closeButton.setClickable(true);
+                closeButton.setEnabled(true);
+                closeButton.setFocusable(true);
+                closeButton.setFocusableInTouchMode(true);
+
+                Runnable clearSearchAction = () -> {
+                    searchViewToolbar.setQuery("", false);
+                    if (searchEditText instanceof android.widget.EditText) {
+                        ((android.widget.EditText) searchEditText).requestFocus();
+                        ((android.widget.EditText) searchEditText).setSelection(0);
+                    }
+                };
+
+                closeButton.setOnClickListener(v -> clearSearchAction.run());
             }
         }
 
@@ -787,52 +761,36 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
-            // Cek apakah SearchView sedang tampil dan aktif
-            if (searchViewToolbar != null && searchViewToolbar.getVisibility() == View.VISIBLE) {
-                View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
-                if (searchEditText instanceof android.widget.EditText) {
-                    android.widget.EditText editText = (android.widget.EditText) searchEditText;
-                    String currentText = editText.getText().toString();
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+            int keyCode = event.getKeyCode();
 
-                    Log.d("HYTERA_SEARCH", "Tombol Back fisik ditekan. Isi teks: [" + currentText + "]");
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK || keyCode == android.view.KeyEvent.KEYCODE_DEL) {
+                if (searchViewToolbar != null && searchViewToolbar.getVisibility() == View.VISIBLE) {
+                    View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                    if (searchEditText instanceof android.widget.EditText) {
+                        android.widget.EditText editText = (android.widget.EditText) searchEditText;
+                        String currentText = editText.getText().toString();
 
-                    // Jika teks TIDAK KOSONG, hapus 1 karakter terakhir (Backspace)
-                    if (!currentText.isEmpty()) {
-                        Log.d("HYTERA_SEARCH", "Aksi: Menghapus 1 karakter karena teks tidak kosong");
-                        int selectionStart = editText.getSelectionStart();
-                        if (selectionStart > 0) {
-                            editText.getText().delete(selectionStart - 1, selectionStart);
+                        Log.d("HYTERA_SEARCH", "dispatchKeyEvent global mencegat KeyCode: " + keyCode + " | Teks: [" + currentText + "]");
+
+                        if (!currentText.isEmpty()) {
+                            int selectionStart = editText.getSelectionStart();
+                            if (selectionStart > 0) {
+                                editText.getText().delete(selectionStart - 1, selectionStart);
+                            } else {
+                                editText.setText(currentText.substring(0, currentText.length() - 1));
+                                editText.setSelection(editText.getText().length());
+                            }
+                            return true;
                         } else {
-                            editText.setText(currentText.substring(0, currentText.length() - 1));
-                            editText.setSelection(editText.getText().length());
+                            closeSearchView();
+                            return true;
                         }
-                        return true; // Perhentikan event agar tidak menutup search
-                    } else {
-                        Log.d("HYTERA_SEARCH", "Aksi: Teks kosong, menutup pencarian");
-                        // Jika kosong, tutup search seperti biasa
-                        closeSearchView(); // Sesuaikan dengan fungsi penutup search Anda
-                        return true;
                     }
                 }
             }
         }
         return super.dispatchKeyEvent(event);
-    }
-
-    public void setToolbarTitle(String title) {
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle(title);
-        }
-    }
-    private void filterChannels(String query) {
-        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
-
-        if (currentFragment instanceof ChannelFragment) {
-            ((ChannelFragment) currentFragment).filterChannels(query);
-        } else if (currentFragment instanceof ChannelListFragment) {
-            ((ChannelListFragment) currentFragment).filterChannels(query);
-        }
     }
 
     private void closeSearchView() {
@@ -851,6 +809,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
         if (btnToolbarBack != null) {
             btnToolbarBack.setVisibility(View.GONE); // Sembunyikan tombol back kustom
+            btnToolbarBack.setFocusable(true);
         }
 
         updateActionBarTitleToCurrentChannel();
@@ -865,6 +824,22 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             ((ChannelListFragment) currentFragment).filterChannels("");
         }
     }
+
+    public void setToolbarTitle(String title) {
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle(title);
+        }
+    }
+    private void filterChannels(String query) {
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+
+        if (currentFragment instanceof ChannelFragment) {
+            ((ChannelFragment) currentFragment).filterChannels(query);
+        } else if (currentFragment instanceof ChannelListFragment) {
+            ((ChannelListFragment) currentFragment).filterChannels(query);
+        }
+    }
+
     public void updateActionBarTitleToCurrentChannel() {
         try {
             if (getService() != null && getService().isConnected()) {
@@ -958,28 +933,20 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private void showZelloStylePermissionDialog() {
         SharedPreferences prefs = getPreferences(MODE_PRIVATE);
 
-        // 1. Cek apakah status baterai sudah "Tidak ada pembatasan"
-        boolean isIgnoringBatteryOptimizations = false;
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(Context.POWER_SERVICE);
-            if (pm != null) {
-                isIgnoringBatteryOptimizations = pm.isIgnoringBatteryOptimizations(getPackageName());
-            }
-        }
+        // 1. Pengecekan pembatasan baterai DIHAPUS agar tidak memicu dialog terus-menerus di Hytera
 
         // 2. Cek apakah izin dasar (Audio & Lokasi) sudah diberikan oleh pengguna
         boolean isAudioGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         boolean isLocationGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
 
-        // 3. JIKA SEMUA SUDAH BERES (Baterai aman & Izin lengkap), lewati dialog
-        if (isIgnoringBatteryOptimizations && isAudioGranted && isLocationGranted) {
+        // 3. JIKA IZIN DASAR SUDAH BERES, lewati dialog
+        if (isAudioGranted && isLocationGranted) {
             prefs.edit().putBoolean("zello_perm_dialog_v7", true).apply();
             return;
         }
 
-        // 4. Jika SharedPreferences sudah true TAPI kenyataannya baterai/izin dicabut lagi,
-        // kita reset flag-nya agar layout custom TETAP MUNCUL KEMBALI!
-        if (!isIgnoringBatteryOptimizations || !isAudioGranted || !isLocationGranted) {
+        // 4. Jika izin dicabut lagi, reset flag-nya agar dialog muncul kembali
+        if (!isAudioGranted || !isLocationGranted) {
             prefs.edit().putBoolean("zello_perm_dialog_v7", false).apply();
         }
 
@@ -989,7 +956,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             return;
         }
 
-        // 6. Jika belum lengkap, TAMPILKAN LAYOUT CUSTOM DIALOG ZELLO DI SINI
+        // 6. Jika belum lengkap, TAMPILKAN LAYOUT CUSTOM DIALOG ZELLO
         getWindow().getDecorView().post(() -> {
             try {
                 LayoutInflater inflater = LayoutInflater.from(this);
