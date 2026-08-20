@@ -17,19 +17,13 @@
 
 package se.lublin.mumla.channel;
 
-import static android.content.Context.RECEIVER_NOT_EXPORTED;
-
 import android.app.Activity;
-import android.app.SearchManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.database.CursorWrapper;
-import android.graphics.PorterDuff;
 import android.media.AudioManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.util.Log;
@@ -46,6 +40,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.ActionMode;
 import androidx.appcompat.widget.SearchView;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.MenuItemCompat;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -63,11 +58,11 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
 import se.lublin.mumla.db.DatabaseProvider;
 import se.lublin.mumla.util.HumlaServiceFragment;
-import androidx.core.content.ContextCompat;
 
 public class ChannelListFragment extends HumlaServiceFragment implements OnChannelClickListener, OnUserClickListener, SharedPreferences.OnSharedPreferenceChangeListener {
     private static final String TAG = ChannelListFragment.class.getName();
     private TextView mEmptyView;
+
     private IHumlaObserver mServiceObserver = new HumlaObserver() {
         @Override
         public void onDisconnected(HumlaException e) {
@@ -122,8 +117,6 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
 
         @Override
         public void onUserRemoved(IUser user, String reason) {
-            // If we are the user being removed, don't update the channel list.
-            // We won't be in a synchronized state.
             if (getService() == null || !getService().isConnected()) {
                 return;
             }
@@ -135,7 +128,9 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         @Override
         public void onUserStateUpdated(IUser user) {
             mChannelListAdapter.updateUserStates(user, mChannelView);
-            getActivity().supportInvalidateOptionsMenu(); // Update self mute/deafen state
+            if (getActivity() != null) {
+                getActivity().supportInvalidateOptionsMenu();
+            }
         }
 
         @Override
@@ -148,7 +143,7 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         @Override
         public void onReceive(Context context, Intent intent) {
             if(getActivity() != null)
-                getActivity().supportInvalidateOptionsMenu(); // Update bluetooth menu item
+                getActivity().supportInvalidateOptionsMenu();
         }
     };
 
@@ -187,6 +182,7 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_channel_list, container, false);
+
         mChannelView = (RecyclerView) view.findViewById(R.id.channelUsers);
         mChannelView.setLayoutManager(new LinearLayoutManager(getActivity()));
 
@@ -200,7 +196,7 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
                     if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                         View focusedChild = mChannelView.getFocusedChild();
                         if (focusedChild != null) {
-                            focusedChild.performClick(); // Memicu klik pada channel/user yang disorot
+                            focusedChild.performClick();
                             return true;
                         }
                     }
@@ -209,7 +205,6 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
             }
         });
 
-        // Tangkap TextView "Tidak ada" dari layout
         mEmptyView = (TextView) view.findViewById(R.id.empty_search_view);
 
         return view;
@@ -233,7 +228,6 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
 
         IntentFilter channelFilter = new IntentFilter("ACTION_UPDATE_CHANNELS");
 
-        // Gunakan ContextCompat agar kompatibel untuk semua versi SDK
         if (getActivity() != null) {
             ContextCompat.registerReceiver(
                     getActivity(),
@@ -253,7 +247,13 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
 
     @Override
     public void onDetach() {
-        getActivity().unregisterReceiver(mBluetoothReceiver);
+        try {
+            if (getActivity() != null) {
+                getActivity().unregisterReceiver(mBluetoothReceiver);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         super.onDetach();
     }
 
@@ -261,7 +261,9 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     public void onDestroy() {
         super.onDestroy();
         try {
-            getActivity().unregisterReceiver(mChannelUpdateReceiver);
+            if (getActivity() != null) {
+                getActivity().unregisterReceiver(mChannelUpdateReceiver);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -284,11 +286,9 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
                 mChannelListAdapter.setService(service);
             }
 
-            // TAMBAHKAN KODE INI:
             if (service != null && service.isConnected()) {
                 IHumlaSession session = service.HumlaSession();
                 if (session != null && session.getSessionChannel().getId() == 0) {
-                    // Jika posisi saat ini masih di root channel (ID 0), paksa pindah ke ID 1
                     session.joinChannel(1);
                 }
             }
@@ -302,25 +302,21 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     public void onPrepareOptionsMenu(Menu menu) {
         super.onPrepareOptionsMenu(menu);
 
-        MenuItem muteItem = menu.findItem(R.id.menu_mute_button);
-        MenuItem deafenItem = menu.findItem(R.id.menu_deafen_button);
-
-        if(getService() != null && getService().isConnected()) {
+        if (getService() != null && getService().isConnected()) {
             IHumlaSession session = getService().HumlaSession();
 
-            // Color the action bar icons to the primary text color of the theme, TODO move this elsewhere
-            int foregroundColor = getActivity().getTheme().obtainStyledAttributes(new int[]{android.R.attr.textColorPrimaryInverse}).getColor(0, -1);
-
-            IUser self = session.getSessionUser();
-            if (self != null) {
-                muteItem.setIcon(self.isSelfMuted() ? R.drawable.ic_action_microphone_muted : R.drawable.ic_action_microphone);
-                deafenItem.setIcon(self.isSelfDeafened() ? R.drawable.ic_action_audio_muted : R.drawable.ic_action_audio);
-                muteItem.getIcon().mutate().setColorFilter(foregroundColor, PorterDuff.Mode.MULTIPLY);
-                deafenItem.getIcon().mutate().setColorFilter(foregroundColor, PorterDuff.Mode.MULTIPLY);
-            }
-
             MenuItem bluetoothItem = menu.findItem(R.id.menu_bluetooth);
-            bluetoothItem.setChecked(session.usingBluetoothSco());
+            if (bluetoothItem != null) {
+                bluetoothItem.setChecked(session.usingBluetoothSco());
+            }
+        }
+
+        // Logika untuk menu Register (Tampil jika belum terdaftar, hilang jika sudah)
+        MenuItem registerItem = menu.findItem(R.id.menu_register);
+        if (registerItem != null) {
+            // Ubah method pengecekan status register sesuai logic aplikasi Anda
+            boolean isRegistered = false;
+            registerItem.setVisible(!isRegistered);
         }
     }
 
@@ -328,105 +324,62 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.fragment_channel_list, menu);
 
-        /*MenuItem searchItem = menu.findItem(R.id.menu_search);
-        SearchManager searchManager = (SearchManager) getActivity().getSystemService(Context.SEARCH_SERVICE);
-
-        final SearchView searchView = (SearchView)MenuItemCompat.getActionView(searchItem);
-        searchView.setSearchableInfo(searchManager.getSearchableInfo(getActivity().getComponentName()));
-        searchView.setOnSuggestionListener(new SearchView.OnSuggestionListener() {
-            @Override
-            public boolean onSuggestionSelect(int i) {
-                return false;
-            }
-
-            @Override
-            public boolean onSuggestionClick(int i) {
-                if (getService() == null || !getService().isConnected())
-                    return false;
-                CursorWrapper cursor = (CursorWrapper) searchView.getSuggestionsAdapter().getItem(i);
-                int typeColumn = cursor.getColumnIndex(SearchManager.SUGGEST_COLUMN_INTENT_EXTRA_DATA);
-                int dataIdColumn = cursor.getColumnIndex(SearchManager.SUGGEST_COLUMN_INTENT_DATA);
-                String itemType = cursor.getString(typeColumn);
-                int itemId = cursor.getInt(dataIdColumn);
-
-                IHumlaSession session = getService().HumlaSession();
-                if(ChannelSearchProvider.INTENT_DATA_CHANNEL.equals(itemType)) {
-                    if(session.getSessionChannel().getId() != itemId) {
-                        session.joinChannel(itemId);
-                    } else {
-                        scrollToChannel(itemId);
-                    }
-                    return true;
-                } else if(ChannelSearchProvider.INTENT_DATA_USER.equals(itemType)) {
-                    scrollToUser(itemId);
-                    return true;
-                }
-                return false;
-            }
-        });*/
         MenuItem searchItem = menu.findItem(R.id.menu_search);
 
-        // Gunakan androidx.appcompat.widget.SearchView sesuai library AppCompat
-        final SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchItem);
+        if (searchItem != null) {
+            final SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchItem);
 
-        if (searchView != null) {
-            searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-                @Override
-                public boolean onQueryTextSubmit(String query) {
-                    if (mChannelListAdapter != null) {
-                        mChannelListAdapter.filter(query, mEmptyView);
+            if (searchView != null) {
+                searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+                    @Override
+                    public boolean onQueryTextSubmit(String query) {
+                        if (mChannelListAdapter != null) {
+                            mChannelListAdapter.filter(query, mEmptyView);
+                        }
+                        return true;
                     }
-                    return true;
-                }
 
-                @Override
-                public boolean onQueryTextChange(String newText) {
-                    // Filter berjalan otomatis secara real-time setiap huruf diketik
-                    if (mChannelListAdapter != null) {
-                        mChannelListAdapter.filter(newText, mEmptyView);
+                    @Override
+                    public boolean onQueryTextChange(String newText) {
+                        if (mChannelListAdapter != null) {
+                            mChannelListAdapter.filter(newText, mEmptyView);
+                        }
+                        return true;
                     }
-                    return true;
-                }
-            });
+                });
 
-            // Opsional: Reset filter saat kotak pencarian ditutup (klik tombol close/back)
-            searchItem.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
-                @Override
-                public boolean onMenuItemActionExpand(MenuItem item) {
-                    return true;
-                }
-
-                @Override
-                public boolean onMenuItemActionCollapse(MenuItem item) {
-                    if (mChannelListAdapter != null) {
-                        mChannelListAdapter.filter("", mEmptyView);
+                searchItem.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
+                    @Override
+                    public boolean onMenuItemActionExpand(MenuItem menuItem) {
+                        // Saat Search terbuka, pastikan SearchView bisa menerima fokus keyboard/keypad
+                        if (searchView != null) {
+                            searchView.requestFocus();
+                        }
+                        return true;
                     }
-                    return true;
-                }
-            });
+
+                    @Override
+                    public boolean onMenuItemActionCollapse(MenuItem menuItem) {
+                        if (mChannelListAdapter != null) {
+                            mChannelListAdapter.filter("", mEmptyView);
+                        }
+                        return true;
+                    }
+                });
+            }
         }
     }
 
-    /**
-     * Memperbarui daftar channel yang diizinkan secara live tanpa disconnect,
-     * lalu menyegarkan tampilan list channel di Android seketika.
-     */
-    /**
-     * Memperbarui daftar channel yang diizinkan secara live tanpa disconnect,
-     * lalu menyegarkan tampilan list channel di Android seketika.
-     */
     public void updateAllowedChannels(String allowedChannelsCsv) {
         if (getActivity() != null) {
             SharedPreferences prefs = getActivity().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
             prefs.edit().putString("allowed_channels", allowedChannelsCsv).apply();
         }
 
-        // PANGGIL FUNGSI UPDATE DI ADAPTER AGAR LIST-NYA IKUT TER-FILTER/REFRESH
         if (mChannelListAdapter != null) {
             getActivity().runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    // Panggil fungsi internal adapter untuk memuat ulang data dari SharedPreferences & refresh UI
                     mChannelListAdapter.updateChannels();
                     mChannelListAdapter.notifyDataSetChanged();
                 }
@@ -441,27 +394,8 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
 
         IHumlaSession session = getService().HumlaSession();
         int itemId = item.getItemId();
-        if (itemId == R.id.menu_mute_button) {
-            IUser self = session.getSessionUser();
-            if (self != null) {
-                boolean muted = !self.isSelfMuted();
-                boolean deafened = self.isSelfDeafened();
-                deafened &= muted; // Undeafen if mute is off
-                session.setSelfMuteDeafState(muted, deafened);
-            }
 
-            getActivity().supportInvalidateOptionsMenu();
-            return true;
-        } else if (itemId == R.id.menu_deafen_button) {
-            IUser self = session.getSessionUser();
-            if (self != null) {
-                boolean deafened = !self.isSelfDeafened();
-                session.setSelfMuteDeafState(deafened, deafened);
-            }
-
-            getActivity().supportInvalidateOptionsMenu();
-            return true;
-        } else if (itemId == R.id.menu_search) {
+        if (itemId == R.id.menu_search) {
             return false;
         } else if (itemId == R.id.menu_bluetooth) {
             item.setChecked(!item.isChecked());
@@ -486,16 +420,11 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         mChannelListAdapter.notifyDataSetChanged();
     }
 
-    /**
-     * Scrolls to the passed channel.
-     */
     public void scrollToChannel(int channelId) {
         int channelPosition = mChannelListAdapter.getChannelPosition(channelId);
         mChannelView.scrollToPosition(channelPosition);
     }
-    /**
-     * Scrolls to the passed user.
-     */
+
     public void scrollToUser(int userId) {
         int userPosition = mChannelListAdapter.getUserPosition(userId);
         mChannelView.scrollToPosition(userPosition);
@@ -504,12 +433,12 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     private boolean isShowingPinnedChannels() {
         return getArguments().getBoolean("pinned");
     }
+
     @Override
     public void onChannelClick(IChannel channel) {
         if (mTargetProvider.getChatTarget() != null &&
                 channel.equals(mTargetProvider.getChatTarget().getChannel()) &&
                 mActionMode != null) {
-            // Dismiss action mode if double pressed. FIXME: use list view selection instead?
             mActionMode.finish();
         } else {
             ActionMode.Callback cb = new ChatTargetActionModeCallback(mTargetProvider, new ChatTargetProvider.ChatTarget(channel)) {
@@ -528,7 +457,6 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         if (mTargetProvider.getChatTarget() != null &&
                 user.equals(mTargetProvider.getChatTarget().getUser()) &&
                 mActionMode != null) {
-            // Dismiss action mode if double pressed. FIXME: use list view selection instead?
             mActionMode.finish();
         } else {
             ActionMode.Callback cb = new ChatTargetActionModeCallback(mTargetProvider, new ChatTargetProvider.ChatTarget(user)) {

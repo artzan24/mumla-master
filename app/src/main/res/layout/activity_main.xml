@@ -17,16 +17,71 @@
             android:layout_height="wrap_content"
             style="@style/TweakedAppBarLayout">
 
-            <!-- Pastikan Toolbar bisa fokus dan mendukung navigasi D-pad ke anak elemennya -->
             <com.google.android.material.appbar.MaterialToolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:descendantFocusability="afterDescendants"
                 app:popupTheme="?attr/popupOverlay"
-                app:title="@string/app_name" />
+                app:title="@string/app_name">
+
+                <!-- WADAH TOMBOL KUSTOM UNTUK KEYPAD FISIK DI KANAN TOOLBAR -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="end"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:focusable="false"
+                    android:descendantFocusability="beforeDescendants">
+
+                    <!-- Tombol Mute -->
+                    <ImageButton
+                        android:id="@+id/btn_toolbar_mute"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_join_circle_selector"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_action_microphone"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true"
+                        android:clickable="true"
+                        android:nextFocusRight="@id/btn_toolbar_deafen" />
+
+                    <!-- Tombol Deafen -->
+                    <ImageButton
+                        android:id="@+id/btn_toolbar_deafen"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/bg_join_circle_selector"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_action_audio"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true"
+                        android:clickable="true"
+                        android:nextFocusLeft="@id/btn_toolbar_mute"
+                        android:nextFocusRight="@id/btn_toolbar_settings" />
+
+                    <!-- Tombol Settings -->
+                    <!-- Tombol Settings -->
+                    <ImageButton
+                        android:id="@+id/btn_toolbar_settings"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_join_circle_selector"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_settings"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true"
+                        android:clickable="true"
+                        android:nextFocusLeft="@id/btn_toolbar_deafen"
+                        android:nextFocusRight="@id/menu_search" />
+
+                </LinearLayout>
+
+            </com.google.android.material.appbar.MaterialToolbar>
         </com.google.android.material.appbar.AppBarLayout>
 
         <FrameLayout

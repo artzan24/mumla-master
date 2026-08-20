@@ -47,6 +47,7 @@ import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -323,12 +324,100 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        if (getSupportActionBar() != null) {
+//        if (getSupportActionBar() != null) {
+//            // Mengaktifkan tombol home/kiri atas dan memaksa menjadi ikon Settings/Gear
+//            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+//            getSupportActionBar().setHomeButtonEnabled(true);
+//            getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
+//        }
+//
+//        Toolbar toolbar = findViewById(R.id.toolbar);
+//        setSupportActionBar(toolbar);
+
+        //if (getSupportActionBar() != null) {
             // Mengaktifkan tombol home/kiri atas dan memaksa menjadi ikon Settings/Gear
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setHomeButtonEnabled(true);
-            getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
+            //getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            //getSupportActionBar().setHomeButtonEnabled(true);
+            //getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
+        //}
+
+        // ==========================================
+        // TAMBAHKAN KODE INI DI SINI
+        // ==========================================
+
+        ImageButton btnMute = findViewById(R.id.btn_toolbar_mute);
+        ImageButton btnDeafen = findViewById(R.id.btn_toolbar_deafen);
+        ImageButton btnSettings = findViewById(R.id.btn_toolbar_settings);
+
+        if (btnMute != null) {
+            View.OnClickListener muteListener = v -> {
+                if (mService != null && mService.isConnected()) {
+                    IHumlaSession session = mService.HumlaSession();
+                    if (session != null && session.getSessionUser() != null) {
+                        boolean currentMute = session.getSessionUser().isSelfMuted();
+                        boolean currentDeaf = session.getSessionUser().isSelfDeafened();
+                        // Toggle status mute, pertahankan status deaf saat ini
+                        session.setSelfMuteDeafState(!currentMute, currentDeaf);
+                    }
+                }
+            };
+            btnMute.setOnClickListener(muteListener);
+            btnMute.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() == KeyEvent.ACTION_DOWN &&
+                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    muteListener.onClick(v);
+                    return true;
+                }
+                return false;
+            });
         }
+
+        if (btnDeafen != null) {
+            View.OnClickListener deafenListener = v -> {
+                if (mService != null && mService.isConnected()) {
+                    IHumlaSession session = mService.HumlaSession();
+                    if (session != null && session.getSessionUser() != null) {
+                        boolean currentMute = session.getSessionUser().isSelfMuted();
+                        boolean currentDeaf = session.getSessionUser().isSelfDeafened();
+                        // Toggle status deaf, pertahankan status mute saat ini
+                        session.setSelfMuteDeafState(currentMute, !currentDeaf);
+                    }
+                }
+            };
+            btnDeafen.setOnClickListener(deafenListener);
+            btnDeafen.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() == KeyEvent.ACTION_DOWN &&
+                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    deafenListener.onClick(v);
+                    return true;
+                }
+                return false;
+            });
+        }
+
+        if (btnSettings != null) {
+            View.OnClickListener settingsListener = v -> {
+                Intent intent = new Intent(MumlaActivity.this, SettingsActivity.class);
+                startActivity(intent);
+            };
+            btnSettings.setOnClickListener(settingsListener);
+            btnSettings.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                        settingsListener.onClick(v);
+                        return true;
+                    }
+                    // TAMBAHKAN INI: Saat tombol panah kanan ditekan dari tombol Settings
+                    else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                        // Membuka menu options/titik tiga atau memfokuskan ke search
+                        openOptionsMenu();
+                        return true;
+                    }
+                }
+                return false;
+            });
+        }
+        // ==========================================
 
         //Fungsi back standar langsung ke dialog disconnect
         /*getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {

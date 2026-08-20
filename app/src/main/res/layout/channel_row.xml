@@ -68,6 +68,9 @@
         app:srcCompat="@drawable/ic_join"
         app:tint="@color/join_icon_tint"
         android:background="@drawable/bg_join_circle"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:clickable="true"
         android:padding="8dp" />
 
     <!-- Tombol Menu Titik Tiga -->

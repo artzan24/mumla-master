@@ -374,7 +374,7 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         super.onCreateOptionsMenu(menu, inflater);
-        inflater.inflate(R.menu.channel_menu, menu);
+        //inflater.inflate(R.menu.channel_menu, menu);
         // Ambil referensi item register dari menu
         mMenuRegisterItem = menu.findItem(R.id.action_register);
 
