@@ -42,12 +42,14 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -85,6 +87,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import info.guardianproject.netcipher.proxy.OrbotHelper;
 import se.lublin.humla.IHumlaService;
 import se.lublin.humla.IHumlaSession;
+import se.lublin.humla.model.IChannel;
+import se.lublin.humla.model.IUser;
 import se.lublin.humla.model.Server;
 import se.lublin.humla.net.HumlaConnection;
 import se.lublin.humla.protobuf.Mumble;
@@ -96,6 +100,7 @@ import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
 import se.lublin.mumla.channel.AccessTokenFragment;
 import se.lublin.mumla.channel.ChannelFragment;
+import se.lublin.mumla.channel.ChannelListAdapter;
 import se.lublin.mumla.channel.ChannelListFragment;
 import se.lublin.mumla.channel.ServerInfoFragment;
 import se.lublin.mumla.db.DatabaseCertificate;
@@ -173,6 +178,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private static final int PERMISSIONS_REQUEST_POST_NOTIFICATIONS = 2;
     private Server mServerPendingPerm = null;
     private boolean mPermPostNotificationsAsked = false;
+    private androidx.appcompat.widget.SearchView searchViewToolbar;
+    private View btnSearch;
 
     private AlertDialog mConnectingDialog;
     private AlertDialog mErrorDialog;
@@ -324,76 +331,11 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-//        if (getSupportActionBar() != null) {
-//            // Mengaktifkan tombol home/kiri atas dan memaksa menjadi ikon Settings/Gear
-//            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-//            getSupportActionBar().setHomeButtonEnabled(true);
-//            getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
-//        }
-//
-//        Toolbar toolbar = findViewById(R.id.toolbar);
-//        setSupportActionBar(toolbar);
-
-        //if (getSupportActionBar() != null) {
-            // Mengaktifkan tombol home/kiri atas dan memaksa menjadi ikon Settings/Gear
-            //getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            //getSupportActionBar().setHomeButtonEnabled(true);
-            //getSupportActionBar().setHomeAsUpIndicator(R.drawable.ic_settings);
-        //}
-
-        // ==========================================
-        // TAMBAHKAN KODE INI DI SINI
-        // ==========================================
-
-        ImageButton btnMute = findViewById(R.id.btn_toolbar_mute);
-        ImageButton btnDeafen = findViewById(R.id.btn_toolbar_deafen);
         ImageButton btnSettings = findViewById(R.id.btn_toolbar_settings);
-
-        if (btnMute != null) {
-            View.OnClickListener muteListener = v -> {
-                if (mService != null && mService.isConnected()) {
-                    IHumlaSession session = mService.HumlaSession();
-                    if (session != null && session.getSessionUser() != null) {
-                        boolean currentMute = session.getSessionUser().isSelfMuted();
-                        boolean currentDeaf = session.getSessionUser().isSelfDeafened();
-                        // Toggle status mute, pertahankan status deaf saat ini
-                        session.setSelfMuteDeafState(!currentMute, currentDeaf);
-                    }
-                }
-            };
-            btnMute.setOnClickListener(muteListener);
-            btnMute.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() == KeyEvent.ACTION_DOWN &&
-                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                    muteListener.onClick(v);
-                    return true;
-                }
-                return false;
-            });
-        }
-
-        if (btnDeafen != null) {
-            View.OnClickListener deafenListener = v -> {
-                if (mService != null && mService.isConnected()) {
-                    IHumlaSession session = mService.HumlaSession();
-                    if (session != null && session.getSessionUser() != null) {
-                        boolean currentMute = session.getSessionUser().isSelfMuted();
-                        boolean currentDeaf = session.getSessionUser().isSelfDeafened();
-                        // Toggle status deaf, pertahankan status mute saat ini
-                        session.setSelfMuteDeafState(currentMute, !currentDeaf);
-                    }
-                }
-            };
-            btnDeafen.setOnClickListener(deafenListener);
-            btnDeafen.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() == KeyEvent.ACTION_DOWN &&
-                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                    deafenListener.onClick(v);
-                    return true;
-                }
-                return false;
-            });
-        }
+        ImageButton btnSearch = findViewById(R.id.btn_toolbar_search);
+        ImageButton btnOverflow = findViewById(R.id.btn_toolbar_overflow);
+        ImageButton btnToolbarBack = findViewById(R.id.btn_toolbar_back);
+        androidx.appcompat.widget.SearchView searchViewToolbar = findViewById(R.id.search_view_toolbar);
 
         if (btnSettings != null) {
             View.OnClickListener settingsListener = v -> {
@@ -402,43 +344,345 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             };
             btnSettings.setOnClickListener(settingsListener);
             btnSettings.setOnKeyListener((v, keyCode, event) -> {
-                if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-                        settingsListener.onClick(v);
-                        return true;
-                    }
-                    // TAMBAHKAN INI: Saat tombol panah kanan ditekan dari tombol Settings
-                    else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                        // Membuka menu options/titik tiga atau memfokuskan ke search
-                        openOptionsMenu();
-                        return true;
-                    }
+                if (event.getAction() == KeyEvent.ACTION_DOWN &&
+                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    settingsListener.onClick(v);
+                    return true;
                 }
                 return false;
             });
         }
-        // ==========================================
 
-        //Fungsi back standar langsung ke dialog disconnect
-        /*getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                if (mService != null && mService.isConnected()) {
-                    new MaterialAlertDialogBuilder(MumlaActivity.this)
-                            .setMessage(getString(R.string.disconnectSure, mService.getTargetServer().getName()))
-                            .setPositiveButton(R.string.confirm, (dialog, which) -> {
-                                mService.disconnect();
-                                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
-                            })
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .show();
-                } else {
-                    setEnabled(false);
-                    getOnBackPressedDispatcher().onBackPressed();
-                    setEnabled(true);
+        if (btnSearch != null && searchViewToolbar != null) {
+            View.OnClickListener searchClickListener = v -> {
+                Log.d("HYTERA_SEARCH", "Tombol search diklik, membuka SearchView");
+                if (getSupportActionBar() != null) {
+                    getSupportActionBar().setTitle("");
                 }
+
+                if (btnToolbarBack != null) {
+                    btnToolbarBack.setVisibility(View.VISIBLE);
+                }
+
+                searchViewToolbar.setVisibility(View.VISIBLE);
+                searchViewToolbar.setIconified(false);
+
+                View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                if (searchEditText instanceof android.widget.EditText) {
+                    android.widget.EditText editText = (android.widget.EditText) searchEditText;
+
+                    // Memaksa format teks biasa
+                    editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                    editText.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT);
+                    editText.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+
+                    editText.requestFocus();
+
+                    editText.setOnKeyListener((view, keyCode, event) -> {
+                        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                            if (keyCode == android.view.KeyEvent.KEYCODE_DEL || keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                                String currentText = editText.getText().toString();
+
+                                // Log saat tombol back/delete fisik ditekan
+                                Log.d("HYTERA_SEARCH", "Tombol Back/Delete ditekan. Isi teks saat ini: [" + currentText + "]");
+
+                                // Jika teks TIDAK KOSONG, hapus huruf/karakter terakhir (Backspace)
+                                if (!currentText.isEmpty()) {
+                                    Log.d("HYTERA_SEARCH", "Aksi: Menghapus 1 karakter (Backspace)");
+                                    int selectionStart = editText.getSelectionStart();
+                                    int selectionEnd = editText.getSelectionEnd();
+
+                                    if (selectionStart > 0) {
+                                        android.text.Editable editable = editText.getText();
+                                        if (selectionStart == selectionEnd) {
+                                            editable.delete(selectionStart - 1, selectionStart);
+                                        } else {
+                                            editable.delete(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
+                                        }
+                                    } else if (currentText.length() > 0) {
+                                        editText.setText(currentText.substring(0, currentText.length() - 1));
+                                        editText.setSelection(editText.getText().length());
+                                    }
+                                    return true;
+                                } else {
+                                    // Jika teks KOSONG, jalankan fungsi kembali / tutup search
+                                    Log.d("HYTERA_SEARCH", "Aksi: Teks kosong, menutup pencarian / kembali");
+                                    closeSearchView();
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    });
+                }
+            };
+
+            btnSearch.setOnClickListener(searchClickListener);
+
+            // Sembunyikan ikon kaca pembesar bawaan SearchView agar tidak double
+            ImageView searchIcon = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_mag_icon);
+            if (searchIcon != null) {
+                searchIcon.setImageResource(android.R.color.transparent);
+                searchIcon.setMinimumWidth(0);
+                searchIcon.setMinimumHeight(0);
+                searchIcon.getLayoutParams().width = 0;
+                searchIcon.getLayoutParams().height = 0;
+                searchIcon.setVisibility(View.GONE);
             }
-        });*/
+
+            // 1. Tangani Tombol Back Kustom di Kiri
+            if (btnToolbarBack != null) {
+                Runnable closeSearchAction = () -> {
+                    Log.d("HYTERA_SEARCH", "Aksi menutup search via tombol back kustom");
+                    closeSearchView(); // Panggil method untuk menyembunyikan seluruh SearchView dan tombol back
+                };
+
+                btnToolbarBack.setOnClickListener(v -> closeSearchAction.run());
+
+                btnToolbarBack.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                        Log.d("HYTERA_SEARCH", "BtnToolbarBack KeyDown - KeyCode: " + keyCode);
+
+                        // Jika tombol Back (KeyCode 4) atau Del ditekan pada tombol back kustom
+                        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DEL) {
+                            // Ambil referensi EditText search
+                            View searchEditTextRef = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                            if (searchEditTextRef instanceof android.widget.EditText) {
+                                android.widget.EditText editTextRef = (android.widget.EditText) searchEditTextRef;
+                                String currentText = editTextRef.getText().toString();
+
+                                if (!currentText.isEmpty()) {
+                                    // Jika teks TIDAK KOSONG, hapus 1 karakter terakhir (Backspace)
+                                    Log.d("HYTERA_SEARCH", "Teks tidak kosong, menghapus 1 karakter via tombol back kustom");
+                                    int selectionStart = editTextRef.getSelectionStart();
+                                    if (selectionStart > 0) {
+                                        editTextRef.getText().delete(selectionStart - 1, selectionStart);
+                                    } else {
+                                        editTextRef.setText(currentText.substring(0, currentText.length() - 1));
+                                        editTextRef.setSelection(editTextRef.getText().length());
+                                    }
+
+                                    // --- TAMBAHAN: KEMBALIKAN FOKUS KE EDITTEXT DAN SEMBUNYIKAN TOMBOL BACK ---
+                                    btnToolbarBack.setVisibility(View.GONE);
+                                    editTextRef.requestFocus();
+                                    editTextRef.setSelection(editTextRef.getText().length());
+                                    // ------------------------------------------------------------------------
+
+                                    return true;
+                                }
+                            }
+
+                            // Jika teks KOSONG, tutup seluruh pencarian
+                            closeSearchAction.run();
+                            return true;
+                        }
+                        else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            // Jika tekan panah kanan dari tombol back, kembali masuk ke EditText di awal teks
+                            btnToolbarBack.setVisibility(View.GONE);
+                            View searchEditTextRef = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                            if (searchEditTextRef instanceof android.widget.EditText) {
+                                android.widget.EditText editTextRef = (android.widget.EditText) searchEditTextRef;
+                                editTextRef.requestFocus();
+                                editTextRef.setSelection(0);
+                                Log.d("HYTERA_SEARCH", "Kembali ke EditText dari tombol back kustom");
+                                return true;
+                            }
+                        } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+                            // Jika tombol tengah/enter ditekan pada tombol back, tutup seluruh pencarian
+                            closeSearchAction.run();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            }
+
+            // 2. Tangani input teks dan tombol fisik di dalam EditText
+            // 2. Tangani input teks dan tombol fisik di dalam EditText
+            View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+            if (searchEditText instanceof android.widget.EditText) {
+                android.widget.EditText editText = (android.widget.EditText) searchEditText;
+
+                editText.addTextChangedListener(new android.text.TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                        Log.d("HYTERA_SEARCH", "Teks berubah: " + s.toString());
+                        filterChannels(s.toString());
+                    }
+                    @Override
+                    public void afterTextChanged(android.text.Editable s) {}
+                });
+
+                editText.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                        // Tangani tombol BACK atau DEL langsung dari dalam EditText
+                        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_DEL) {
+                            String currentText = editText.getText().toString();
+                            int selStart = editText.getSelectionStart();
+
+                            // Jika teks TIDAK KOSONG, hapus karakter (Backspace) TANPA PINDAH FOKUS
+                            if (!currentText.isEmpty()) {
+                                Log.d("HYTERA_SEARCH", "EditText KeyDown - Menghapus karakter, fokus tetap di teks");
+                                if (selStart > 0) {
+                                    editText.getText().delete(selStart - 1, selStart);
+                                } else if (currentText.length() > 0) {
+                                    editText.setText(currentText.substring(0, currentText.length() - 1));
+                                    editText.setSelection(editText.getText().length());
+                                }
+                                return true; // Tangani event agar tidak lari ke tombol back
+                            } else {
+                                // Jika teks SUDAH KOSONG, baru pindahkan fokus ke tombol back kustom
+                                if (btnToolbarBack != null) {
+                                    btnToolbarBack.setVisibility(View.VISIBLE);
+                                    btnToolbarBack.requestFocus();
+                                    Log.d("HYTERA_SEARCH", "Teks kosong, fokus pindah ke tombol back");
+                                    return true;
+                                }
+                            }
+                        }
+                        else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                            int selStart = editText.getSelectionStart();
+                            CharSequence currentText = editText.getText();
+                            int textLength = currentText != null ? currentText.length() : 0;
+
+                            if (selStart >= textLength) {
+                                View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
+                                if (closeButton != null) {
+                                    closeButton.requestFocus();
+                                    Log.d("HYTERA_SEARCH", "Fokus dipindah ke tombol close (X)");
+                                    return true;
+                                }
+                            }
+                        }
+                        else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                            int selStart = editText.getSelectionStart();
+                            Log.d("HYTERA_SEARCH", "DPAD_LEFT - Kursor di: " + selStart);
+
+                            if (selStart <= 0) {
+                                if (btnToolbarBack != null) {
+                                    btnToolbarBack.setVisibility(View.VISIBLE);
+                                    btnToolbarBack.requestFocus();
+                                    Log.d("HYTERA_SEARCH", "Otomatis pindah fokus ke tombol back kustom (kiri)");
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    return false;
+                });
+            }
+
+            // 3. Tangani Tombol Close (ikon X) di Kanan
+            View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
+            if (closeButton != null) {
+                closeButton.setClickable(true);
+                closeButton.setEnabled(true);
+                closeButton.setFocusable(true);
+                closeButton.setFocusableInTouchMode(true);
+                closeButton.setBackgroundResource(R.drawable.bg_back_selector);
+
+                ViewGroup.LayoutParams params = closeButton.getLayoutParams();
+                if (params != null) {
+                    float density = getResources().getDisplayMetrics().density;
+                    params.width = (int) (40 * density);
+                    params.height = (int) (40 * density);
+                    closeButton.setLayoutParams(params);
+                }
+
+                Runnable clearSearchAction = () -> {
+                    Log.d("HYTERA_SEARCH", "Aksi clearSearchAction dieksekusi");
+                    searchViewToolbar.setQuery("", false);
+                    if (searchEditText instanceof android.widget.EditText) {
+                        ((android.widget.EditText) searchEditText).requestFocus();
+                        ((android.widget.EditText) searchEditText).setSelection(0);
+                    }
+                };
+
+                closeButton.setOnClickListener(v -> clearSearchAction.run());
+
+                closeButton.setOnKeyListener((v, keyCode, event) -> {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                            if (searchEditText instanceof android.widget.EditText) {
+                                android.widget.EditText editText = (android.widget.EditText) searchEditText;
+                                editText.requestFocus();
+                                editText.setSelection(editText.getText().length());
+                                return true;
+                            }
+                        } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A) {
+                            clearSearchAction.run();
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            }
+        }
+
+        if (btnOverflow != null) {
+            btnOverflow.setOnClickListener(v -> {
+                androidx.appcompat.widget.PopupMenu popupMenu = new androidx.appcompat.widget.PopupMenu(MumlaActivity.this, v);
+                popupMenu.getMenuInflater().inflate(R.menu.channel_menu, popupMenu.getMenu());
+
+                // --- PENGECEKAN STATUS REGISTER ---
+                try {
+                    IHumlaSession session = getService().HumlaSession();
+                    if (session != null) {
+                        IUser selfUser = session.getSessionUser();
+                        if (selfUser != null) {
+                            boolean isRegistered = (selfUser.getUserId() >= 0);
+                            if (isRegistered) {
+                                popupMenu.getMenu().findItem(R.id.action_register).setVisible(false);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.d("PopupMenu", "Error checking register state: " + e);
+                }
+                // ----------------------------------
+
+                popupMenu.setOnMenuItemClickListener(item -> {
+                    int itemId = item.getItemId();
+
+                    if (itemId == R.id.action_disconnect) {
+                        // --- TANGANI DISCONNECT LANGSUNG DI ACTIVITY ---
+                        if (getService() != null && getService().isConnected()) {
+                            new MaterialAlertDialogBuilder(MumlaActivity.this)
+                                    .setMessage(getString(R.string.disconnectSure, getService().getTargetServer().getName()))
+                                    .setPositiveButton(R.string.confirm, (dialog, which) -> {
+                                        getService().disconnect();
+                                        loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                                    })
+                                    .setNegativeButton(android.R.string.cancel, null)
+                                    .show();
+                        }
+                        return true;
+                    } else if (itemId == R.id.action_register) {
+                        // --- TANGANI REGISTER LANGSUNG DI ACTIVITY ---
+                        try {
+                            IHumlaSession session = getService().HumlaSession();
+                            if (session != null) {
+                                session.registerUser(session.getSessionId());
+                            }
+                        } catch (Exception e) {
+                            Log.d("PopupMenu", "Error registering user: " + e);
+                        }
+                        return true;
+                    }
+
+                    // Untuk menu lainnya (seperti Bluetooth atau Input Method), teruskan ke fragment
+                    Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+                    if (currentFragment instanceof ChannelListFragment) {
+                        return ((ChannelListFragment) currentFragment).onOptionsItemSelected(item);
+                    }
+                    return false;
+                });
+
+                popupMenu.show();
+            });
+        }
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -448,14 +692,12 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 boolean isChannelScreen = false;
                 if (currentFragment != null) {
                     String fragmentClassName = currentFragment.getClass().getName();
-                    // Cek apakah nama class-nya mengandung ChannelFragment
                     if (fragmentClassName.contains("ChannelFragment")) {
                         isChannelScreen = true;
                     }
                 }
 
                 if (isChannelScreen) {
-                    // Jika sedang di halaman utama channel, langsung minimize aplikasi ke background
                     moveTaskToBack(true);
                 } else if (mService != null && mService.isConnected()) {
                     new MaterialAlertDialogBuilder(MumlaActivity.this)
@@ -474,7 +716,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
         });
 
-        setStayAwake(mSettings.shouldStayAwake());
+        setVolumeControlStream(mSettings.isHandsetMode() ?
+                AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC);
 
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
         preferences.registerOnSharedPreferenceChangeListener(this);
@@ -533,15 +776,120 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
         }
 
-        setVolumeControlStream(mSettings.isHandsetMode() ?
-                AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC);
-
         if (savedInstanceState == null) {
             if (mSettings.isFirstRun()) {
                 showFirstRunGuide();
             } else {
                 new StartupAction().execute(this);
             }
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
+            // Cek apakah SearchView sedang tampil dan aktif
+            if (searchViewToolbar != null && searchViewToolbar.getVisibility() == View.VISIBLE) {
+                View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
+                if (searchEditText instanceof android.widget.EditText) {
+                    android.widget.EditText editText = (android.widget.EditText) searchEditText;
+                    String currentText = editText.getText().toString();
+
+                    Log.d("HYTERA_SEARCH", "Tombol Back fisik ditekan. Isi teks: [" + currentText + "]");
+
+                    // Jika teks TIDAK KOSONG, hapus 1 karakter terakhir (Backspace)
+                    if (!currentText.isEmpty()) {
+                        Log.d("HYTERA_SEARCH", "Aksi: Menghapus 1 karakter karena teks tidak kosong");
+                        int selectionStart = editText.getSelectionStart();
+                        if (selectionStart > 0) {
+                            editText.getText().delete(selectionStart - 1, selectionStart);
+                        } else {
+                            editText.setText(currentText.substring(0, currentText.length() - 1));
+                            editText.setSelection(editText.getText().length());
+                        }
+                        return true; // Perhentikan event agar tidak menutup search
+                    } else {
+                        Log.d("HYTERA_SEARCH", "Aksi: Teks kosong, menutup pencarian");
+                        // Jika kosong, tutup search seperti biasa
+                        closeSearchView(); // Sesuaikan dengan fungsi penutup search Anda
+                        return true;
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    public void setToolbarTitle(String title) {
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle(title);
+        }
+    }
+    private void filterChannels(String query) {
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+
+        if (currentFragment instanceof ChannelFragment) {
+            ((ChannelFragment) currentFragment).filterChannels(query);
+        } else if (currentFragment instanceof ChannelListFragment) {
+            ((ChannelListFragment) currentFragment).filterChannels(query);
+        }
+    }
+
+    private void closeSearchView() {
+        Log.d("HYTERA_SEARCH", "Menjalankan closeSearchView()");
+        ImageButton btnToolbarBack = findViewById(R.id.btn_toolbar_back);
+
+        // Ambil referensi SearchView secara langsung agar tidak null
+        androidx.appcompat.widget.SearchView searchViewToolbar = findViewById(R.id.search_view_toolbar);
+
+        if (searchViewToolbar != null) {
+            searchViewToolbar.setQuery("", false);
+            searchViewToolbar.clearFocus();
+            searchViewToolbar.setIconified(true);
+            searchViewToolbar.setVisibility(View.GONE); // Sekarang teks input pasti ikut hilang
+        }
+
+        if (btnToolbarBack != null) {
+            btnToolbarBack.setVisibility(View.GONE); // Sembunyikan tombol back kustom
+        }
+
+        updateActionBarTitleToCurrentChannel();
+
+        View btnSearch = findViewById(R.id.btn_toolbar_search);
+        if (btnSearch != null) {
+            btnSearch.requestFocus();
+        }
+
+        Fragment currentFragment = getSupportFragmentManager().findFragmentById(R.id.content_frame);
+        if (currentFragment instanceof ChannelListFragment) {
+            ((ChannelListFragment) currentFragment).filterChannels("");
+        }
+    }
+    public void updateActionBarTitleToCurrentChannel() {
+        try {
+            if (getService() != null && getService().isConnected()) {
+                IHumlaSession session = getService().HumlaSession();
+                if (session != null) {
+                    IUser selfUser = session.getSessionUser();
+                    if (selfUser != null) {
+                        IChannel currentChannel = selfUser.getChannel();
+                        if (currentChannel != null && currentChannel.getName() != null) {
+                            String channelName = currentChannel.getName();
+                            if (getSupportActionBar() != null) {
+                                getSupportActionBar().setTitle(channelName);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.d("MumlaActivity", "Error updating channel title: " + e.getMessage());
+        }
+
+        // Fallback: Jika belum connect atau tidak ada channel, gunakan nama aplikasi
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle(R.string.app_name);
         }
     }
 
@@ -774,7 +1122,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             showOemBatteryOptimizationDialog();
         }
     }
-
 
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
@@ -1071,7 +1418,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mSettings.setFirstRun(false);
     }
 
-    private void loadDrawerFragment(int fragmentId) {
+    public void loadDrawerFragment(int fragmentId) {
         // 1. Atur visibilitas toolbar secara dinamis berdasarkan halaman yang dipilih
         Toolbar toolbar = findViewById(R.id.toolbar);
         if (toolbar != null) {

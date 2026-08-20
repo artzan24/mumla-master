@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Saat tombol mendapat fokus dari keypad / disentuh -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#1565C0" /> <!-- Biru lebih gelap / menyala -->
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+
+    <!-- Kondisi normal -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#2196F3" /> <!-- Biru standar -->
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</selector>

@@ -39,9 +39,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.ActionMode;
-import androidx.appcompat.widget.SearchView;
 import androidx.core.content.ContextCompat;
-import androidx.core.view.MenuItemCompat;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -56,12 +54,14 @@ import se.lublin.humla.util.HumlaObserver;
 import se.lublin.humla.util.IHumlaObserver;
 import se.lublin.mumla.R;
 import se.lublin.mumla.Settings;
+import se.lublin.mumla.app.MumlaActivity;
 import se.lublin.mumla.db.DatabaseProvider;
 import se.lublin.mumla.util.HumlaServiceFragment;
 
 public class ChannelListFragment extends HumlaServiceFragment implements OnChannelClickListener, OnUserClickListener, SharedPreferences.OnSharedPreferenceChangeListener {
     private static final String TAG = ChannelListFragment.class.getName();
     private TextView mEmptyView;
+    private MenuItem mMenuRegisterItem;
 
     private IHumlaObserver mServiceObserver = new HumlaObserver() {
         @Override
@@ -128,6 +128,10 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         @Override
         public void onUserStateUpdated(IUser user) {
             mChannelListAdapter.updateUserStates(user, mChannelView);
+
+            // Perbarui visibilitas menu register ketika status user berubah dari server
+            updateRegisterMenuVisibility();
+
             if (getActivity() != null) {
                 getActivity().supportInvalidateOptionsMenu();
             }
@@ -157,7 +161,7 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setHasOptionsMenu(true);
+        //setHasOptionsMenu(true);
     }
 
     @Override
@@ -303,71 +307,16 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         super.onPrepareOptionsMenu(menu);
 
         if (getService() != null && getService().isConnected()) {
-            IHumlaSession session = getService().HumlaSession();
+            IHumlaSession humlaSession = getService().HumlaSession();
 
             MenuItem bluetoothItem = menu.findItem(R.id.menu_bluetooth);
-            if (bluetoothItem != null) {
-                bluetoothItem.setChecked(session.usingBluetoothSco());
+            if (bluetoothItem != null && humlaSession != null) {
+                bluetoothItem.setChecked(humlaSession.usingBluetoothSco());
             }
         }
 
-        // Logika untuk menu Register (Tampil jika belum terdaftar, hilang jika sudah)
-        MenuItem registerItem = menu.findItem(R.id.menu_register);
-        if (registerItem != null) {
-            // Ubah method pengecekan status register sesuai logic aplikasi Anda
-            boolean isRegistered = false;
-            registerItem.setVisible(!isRegistered);
-        }
-    }
-
-    @Override
-    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        inflater.inflate(R.menu.fragment_channel_list, menu);
-
-        MenuItem searchItem = menu.findItem(R.id.menu_search);
-
-        if (searchItem != null) {
-            final SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchItem);
-
-            if (searchView != null) {
-                searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
-                    @Override
-                    public boolean onQueryTextSubmit(String query) {
-                        if (mChannelListAdapter != null) {
-                            mChannelListAdapter.filter(query, mEmptyView);
-                        }
-                        return true;
-                    }
-
-                    @Override
-                    public boolean onQueryTextChange(String newText) {
-                        if (mChannelListAdapter != null) {
-                            mChannelListAdapter.filter(newText, mEmptyView);
-                        }
-                        return true;
-                    }
-                });
-
-                searchItem.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
-                    @Override
-                    public boolean onMenuItemActionExpand(MenuItem menuItem) {
-                        // Saat Search terbuka, pastikan SearchView bisa menerima fokus keyboard/keypad
-                        if (searchView != null) {
-                            searchView.requestFocus();
-                        }
-                        return true;
-                    }
-
-                    @Override
-                    public boolean onMenuItemActionCollapse(MenuItem menuItem) {
-                        if (mChannelListAdapter != null) {
-                            mChannelListAdapter.filter("", mEmptyView);
-                        }
-                        return true;
-                    }
-                });
-            }
-        }
+        // Perbarui visibilitas menu register setiap kali menu disiapkan
+        updateRegisterMenuVisibility();
     }
 
     public void updateAllowedChannels(String allowedChannelsCsv) {
@@ -388,26 +337,57 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+
+        // Perbarui judul toolbar ke channel aktif saat fragment ini tampil/aktif
+        if (getActivity() instanceof MumlaActivity) {
+            ((MumlaActivity) getActivity()).updateActionBarTitleToCurrentChannel();
+        }
+    }
+
+    @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (getService() == null || !getService().isConnected())
+        // Cek dulu apakah service valid
+        if (getService() == null)
             return super.onOptionsItemSelected(item);
 
-        IHumlaSession session = getService().HumlaSession();
         int itemId = item.getItemId();
 
-        if (itemId == R.id.menu_search) {
-            return false;
-        } else if (itemId == R.id.menu_bluetooth) {
-            item.setChecked(!item.isChecked());
-            if (item.isChecked()) {
-                session.enableBluetoothSco();
-            } else {
-                session.disableBluetoothSco();
+        if (itemId == R.id.menu_bluetooth) {
+            if (getService().isConnected()) {
+                IHumlaSession session = getService().HumlaSession();
+                item.setChecked(!item.isChecked());
+                if (item.isChecked()) {
+                    session.enableBluetoothSco();
+                } else {
+                    session.disableBluetoothSco();
+                }
+            }
+            return true;
+        } else if (itemId == R.id.action_register) {
+            if (getService().isConnected()) {
+                try {
+                    IHumlaSession session = getService().HumlaSession();
+                    session.registerUser(session.getSessionId());
+                } catch (Exception e) {
+                    Log.d(TAG, "Error registering user: " + e);
+                }
             }
             return true;
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onCreateOptionsMenu(@NonNull Menu menu, @NonNull MenuInflater inflater) {
+        super.onCreateOptionsMenu(menu, inflater);
+        inflater.inflate(R.menu.channel_menu, menu);
+
+        // Simpan referensi item menu register
+        mMenuRegisterItem = menu.findItem(R.id.action_register);
+        updateRegisterMenuVisibility(); // Periksa visibilitas saat menu pertama kali dibuat
     }
 
     private void setupChannelList() throws RemoteException {
@@ -418,6 +398,20 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
         mChannelListAdapter.setOnUserClickListener(this);
         mChannelView.setAdapter(mChannelListAdapter);
         mChannelListAdapter.notifyDataSetChanged();
+    }
+
+    // === METHOD UNTUK MENANGANI PENCARIAN/FILTER CHANNEL ===
+    // === SESUAIKAN METHOD INI DI ChannelListFragment.java ===
+    public void filterChannels(String query) {
+        Log.d("HYTERA_SEARCH", "4. ChannelListFragment menerima query: [" + query + "]");
+
+        // Ganti "mAdapter" dengan nama variabel adapter yang sesuai di class Anda (misal: mChannelListAdapter)
+        if (mChannelListAdapter != null) {
+            Log.d("HYTERA_SEARCH", "5. Adapter ditemukan, memanggil filter()");
+            mChannelListAdapter.filter(query, mEmptyView);
+        } else {
+            Log.d("HYTERA_SEARCH", "5. ERROR: Variabel adapter di ChannelListFragment masih NULL!");
+        }
     }
 
     public void scrollToChannel(int channelId) {
@@ -449,6 +443,30 @@ public class ChannelListFragment extends HumlaServiceFragment implements OnChann
                 }
             };
             mActionMode = ((AppCompatActivity)getActivity()).startSupportActionMode(cb);
+        }
+    }
+
+    private void updateRegisterMenuVisibility() {
+        if (mMenuRegisterItem == null || getService() == null || !getService().isConnected()) {
+            return;
+        }
+
+        try {
+            IUser selfUser = getService().HumlaSession().getSessionUser();
+            if (selfUser != null) {
+                boolean canRegister = (selfUser.getUserId() < 0);
+
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            mMenuRegisterItem.setVisible(canRegister);
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "exception in updateRegisterMenuVisibility: " + e);
         }
     }
 

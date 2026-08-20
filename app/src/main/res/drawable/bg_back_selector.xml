@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Saat tombol sedang mendapatkan fokus dari D-pad -->
+    <item android:state_focused="true">
+        <shape android:shape="oval">
+            <solid android:color="#33FFFFFF" /> <!-- Warna latar belakang saat fokus (semi-transparan putih/abu) -->
+        </shape>
+    </item>
+
+    <!-- Saat tombol ditekan -->
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#55FFFFFF" />
+        </shape>
+    </item>
+
+    <!-- Default: Transparan total saat tidak fokus -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>

@@ -19,6 +19,7 @@ package se.lublin.mumla.servers;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
@@ -51,77 +52,138 @@ public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
         return getItem(position).getId();
     }
 
+    static class ViewHolder {
+        EditText etUsername;
+        EditText etPassword;
+        ImageView btnTogglePass;
+        Button btnConnect;
+    }
+
     @Override
     public View getView(int position, View v, ViewGroup parent) {
         View view = v;
+        ViewHolder holder;
 
-        if(v == null) {
+        if (view == null) {
             LayoutInflater inflater = (LayoutInflater) getContext().getSystemService(Context.LAYOUT_INFLATER_SERVICE);
             view = inflater.inflate(mViewResource, parent, false);
+
+            holder = new ViewHolder();
+            holder.etUsername = view.findViewById(R.id.server_row_edit_username);
+            holder.etPassword = view.findViewById(R.id.server_row_edit_password);
+            holder.btnTogglePass = view.findViewById(R.id.btn_row_toggle_password);
+            holder.btnConnect = view.findViewById(R.id.btn_row_connect);
+
+            view.setTag(holder);
+        } else {
+            holder = (ViewHolder) view.getTag();
         }
 
         final E server = getItem(position);
 
-        // Ambil komponen form login dari server_list_row.xml yang baru
-        final EditText etUsername = view.findViewById(R.id.server_row_edit_username);
-        final EditText etPassword = view.findViewById(R.id.server_row_edit_password);
-        final ImageView btnTogglePass = view.findViewById(R.id.btn_row_toggle_password);
-        final Button btnConnect = view.findViewById(R.id.btn_row_connect);
-
-        // Muat data yang pernah tersimpan sebelumnya menggunakan SharedPreferences (MumbleUserSession & RoipLoginPrefs)
+        // Muat data SharedPreferences setiap kali row disiapkan/dirender agar sinkron dengan item data saat ini
         SharedPreferences prefsLogin = getContext().getSharedPreferences("RoipLoginPrefs", Context.MODE_PRIVATE);
         SharedPreferences prefsSession = getContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
 
         String savedUsername = prefsLogin.getString("saved_username", server != null ? server.getUsername() : "");
         String savedPassword = prefsSession.getString("saved_ci4_password", prefsLogin.getString("saved_password", ""));
 
-        if (etUsername != null && etUsername.getText().toString().isEmpty()) {
-            etUsername.setText(savedUsername);
+        if (holder.etUsername != null) {
+            // Isi teks hanya jika field kosong agar tidak mengganggu pengetikan aktif pengguna
+            if (holder.etUsername.getText().toString().isEmpty()) {
+                holder.etUsername.setText(savedUsername);
+            }
+            // Langsung berikan fokus ke kolom username saat pertama kali muncul
+            holder.etUsername.requestFocus();
         }
-        if (etPassword != null && etPassword.getText().toString().isEmpty()) {
-            etPassword.setText(savedPassword);
+        if (holder.etPassword != null) {
+            if (holder.etPassword.getText().toString().isEmpty()) {
+                holder.etPassword.setText(savedPassword);
+            }
+            holder.etPassword.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
         }
 
-        // Set default awal password disamarkan menjadi titik-titik
-        if (etPassword != null) {
-            etPassword.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+        // Sinkronisasi klik pada wadah (layout) pembungkus password agar langsung fokus ke EditText password di dalamnya
+        if (holder.etPassword != null) {
+            View passwordContainer = (View) holder.etPassword.getParent();
+            if (passwordContainer != null) {
+                passwordContainer.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        holder.etPassword.requestFocus();
+                        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+                        if (imm != null) {
+                            imm.showSoftInput(holder.etPassword, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+                        }
+                    }
+                });
+            }
         }
 
-        // Fitur Tombol Mata (Show/Hide Password)
-        if (btnTogglePass != null && etPassword != null) {
+        // Fitur Tombol Mata (Show/Hide Password) dengan dukungan Klik dan Keypad (DPAD Center / Enter)
+        if (holder.btnTogglePass != null && holder.etPassword != null) {
+            final EditText passwordField = holder.etPassword;
+            final ImageView togglePass = holder.btnTogglePass;
+
+            // Hapus listener sebelumnya agar tidak menumpuk saat recycler/list mendaur ulang view
+            togglePass.setOnClickListener(null);
+            togglePass.setOnKeyListener(null);
+
             final boolean[] isPasswordVisible = {false};
-            btnTogglePass.setOnClickListener(new View.OnClickListener() {
+            View.OnClickListener toggleClickListener = new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    int cursorPos = etPassword.getSelectionStart();
+                    int cursorPos = passwordField.getSelectionStart();
                     if (isPasswordVisible[0]) {
                         // Sembunyikan password kembali
-                        etPassword.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
-                        btnTogglePass.setImageResource(R.drawable.ic_visibility);
+                        passwordField.setTransformationMethod(android.text.method.PasswordTransformationMethod.getInstance());
+                        togglePass.setImageResource(R.drawable.ic_visibility);
                         isPasswordVisible[0] = false;
                     } else {
                         // Tampilkan password (buka mata)
-                        etPassword.setTransformationMethod(null);
-                        btnTogglePass.setImageResource(R.drawable.ic_visibility_off);
+                        passwordField.setTransformationMethod(null);
+                        togglePass.setImageResource(R.drawable.ic_visibility_off);
                         isPasswordVisible[0] = true;
                     }
-                    etPassword.setSelection(cursorPos);
+                    passwordField.setSelection(cursorPos);
+                }
+            };
+
+            togglePass.setOnClickListener(toggleClickListener);
+
+            // Dukungan penekanan tombol OK/Enter pada keypad fisik saat ikon mata disorot (fokus)
+            togglePass.setOnKeyListener(new View.OnKeyListener() {
+                @Override
+                public boolean onKey(View v, int keyCode, KeyEvent event) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                            togglePass.performClick();
+                            return true;
+                        }
+                    }
+                    return false;
                 }
             });
         }
 
         // Aksi saat tombol Connect ditekan
-        if (btnConnect != null) {
-            btnConnect.setOnClickListener(new View.OnClickListener() {
+        if (holder.btnConnect != null) {
+            final EditText usernameField = holder.etUsername;
+            final EditText passwordField = holder.etPassword;
+
+            // Hapus listener lama untuk mencegah duplikasi eksekusi aksi klik
+            holder.btnConnect.setOnClickListener(null);
+
+            holder.btnConnect.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    String usernameStr = etUsername != null ? etUsername.getText().toString().trim() : "";
-                    String passwordStr = etPassword != null ? etPassword.getText().toString().trim() : "";
+                    String usernameStr = usernameField != null ? usernameField.getText().toString().trim() : "";
+                    String passwordStr = passwordField != null ? passwordField.getText().toString().trim() : "";
 
                     if (usernameStr.isEmpty()) {
-                        if (etUsername != null) {
-                            etUsername.setError("Username / NRP harus diisi!");
-                            etUsername.requestFocus();
+                        if (usernameField != null) {
+                            usernameField.setError("Username / NRP harus diisi!");
+                            usernameField.requestFocus();
                         }
                         return;
                     }

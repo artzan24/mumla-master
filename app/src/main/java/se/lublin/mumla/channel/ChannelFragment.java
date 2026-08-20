@@ -408,6 +408,29 @@ public class ChannelFragment extends HumlaServiceFragment implements SharedPrefe
         }
     }
 
+    public void filterChannels(String query) {
+        Log.d("HYTERA_SEARCH", "4. ChannelFragment menerima query: [" + query + "]");
+
+        // Cari fragment anak (child fragment) yang aktif di dalam ViewPager
+        if (mViewPager != null && mViewPager.getAdapter() != null) {
+            // Halaman 0 adalah ChannelListFragment
+            Fragment activeFragment = getChildFragmentManager().findFragmentByTag("android:switcher:" + mViewPager.getId() + ":" + mViewPager.getCurrentItem());
+
+            if (activeFragment instanceof ChannelListFragment) {
+                Log.d("HYTERA_SEARCH", "5. Meniteruskan filter ke ChannelListFragment di dalam ViewPager");
+                ((ChannelListFragment) activeFragment).filterChannels(query);
+            } else {
+                // Cara alternatif jika tag switcher berbeda
+                List<Fragment> fragments = getChildFragmentManager().getFragments();
+                for (Fragment f : fragments) {
+                    if (f instanceof ChannelListFragment) {
+                        ((ChannelListFragment) f).filterChannels(query);
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         Settings settings = Settings.getInstance(getActivity());

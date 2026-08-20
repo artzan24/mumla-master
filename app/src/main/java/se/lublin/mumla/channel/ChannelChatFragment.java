@@ -226,10 +226,10 @@ public class ChannelChatFragment extends HumlaServiceFragment implements ChatTar
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.fragment_chat, menu);
-        MenuItem searchItem = menu.findItem(R.id.menu_search);
-        if (searchItem != null) {
+        //MenuItem searchItem = menu.findItem(R.id.menu_search);
+        /*if (searchItem != null) {
             searchItem.setVisible(false);
-        }
+        }*/
     }
 
     @Override

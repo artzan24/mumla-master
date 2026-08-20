@@ -2,14 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Menu Pencarian -->
-    <item
-        android:id="@+id/menu_search"
-        android:icon="@drawable/ic_action_search"
-        android:title="Pencarian"
-        app:showAsAction="ifRoom|collapseActionView"
-        app:actionViewClass="androidx.appcompat.widget.SearchView" />
-
     <!-- Bluetooth -->
     <item
         android:id="@+id/menu_bluetooth"
@@ -18,7 +10,7 @@
 
     <!-- Register -->
     <item
-        android:id="@+id/menu_register"
+        android:id="@+id/action_register"
         android:title="Register"
         app:showAsAction="never" />
 

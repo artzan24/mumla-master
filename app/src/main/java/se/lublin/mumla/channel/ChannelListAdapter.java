@@ -53,6 +53,7 @@ import se.lublin.humla.model.Server;
 import se.lublin.humla.model.TalkState;
 import se.lublin.humla.util.HumlaDisconnectedException;
 import se.lublin.mumla.R;
+import se.lublin.mumla.app.MumlaActivity;
 import se.lublin.mumla.db.MumlaDatabase;
 import se.lublin.mumla.drawable.CircleDrawable;
 import se.lublin.mumla.service.MumlaService;
@@ -116,6 +117,8 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
      * FUNGSI FILTER PENCARIAN REAL-TIME
      */
     public void filter(String text, TextView emptyView) {
+        Log.d("HYTERA_SEARCH", "6. Adapter.filter() EKSEKUSI. Query: [" + text + "]");
+
         if (mFilteredNodes == null) {
             mFilteredNodes = new ArrayList<>();
         }
@@ -123,10 +126,17 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 
         text = text != null ? text.toLowerCase().trim() : "";
 
+        if (mNodes == null) {
+            Log.d("HYTERA_SEARCH", "7. PERINGATAN: mNodes di adapter bernilai NULL!");
+        } else {
+            Log.d("HYTERA_SEARCH", "7. Jumlah total node awal di mNodes: " + mNodes.size());
+        }
+
         if (text.isEmpty()) {
             if (mNodes != null) {
                 mFilteredNodes.addAll(mNodes);
             }
+            Log.d("HYTERA_SEARCH", "8. Query kosong, menampilkan semua node. Jumlah: " + mFilteredNodes.size());
         } else {
             if (mNodes != null) {
                 for (Node node : mNodes) {
@@ -142,13 +152,18 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                     }
                 }
             }
+            Log.d("HYTERA_SEARCH", "8. Selesai filtering. Hasil node yang cocok: " + mFilteredNodes.size());
         }
 
         notifyDataSetChanged();
 
         // Atur visibilitas teks "Tidak ada"
         if (emptyView != null) {
-            emptyView.setVisibility(mFilteredNodes.isEmpty() ? View.VISIBLE : View.GONE);
+            boolean isEmpty = mFilteredNodes.isEmpty();
+            emptyView.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
+            Log.d("HYTERA_SEARCH", "9. Status EmptyView visibility: " + (isEmpty ? "VISIBLE" : "GONE"));
+        } else {
+            Log.d("HYTERA_SEARCH", "9. emptyView bernilai NULL");
         }
     }
 
@@ -260,6 +275,15 @@ public class ChannelListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
                 public void onClick(View v) {
                     if (mService != null && mService.isConnected()) {
                         mService.HumlaSession().joinChannel(channel.getId());
+
+                        if (v.getContext() instanceof MumlaActivity) {
+                            MumlaActivity activity = (MumlaActivity) v.getContext();
+                            // Perbarui judul toolbar
+                            activity.setToolbarTitle(channel.getName());
+                        }
+
+                        // Segarkan adapter agar status activated (background khusus) langsung berpindah ke channel ini
+                        notifyDataSetChanged();
                     }
                 }
             });
