@@ -359,6 +359,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                 View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
                 if (searchEditText instanceof android.widget.EditText) {
                     android.widget.EditText editText = (android.widget.EditText) searchEditText;
+                    editText.post(() -> {
+                        editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 28f);
+                    });
 
                     editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
                     editText.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT);
@@ -507,92 +510,20 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             }
         }
 
-        if (btnSearch != null && searchViewToolbar != null) {
-            View.OnClickListener searchClickListener = v -> {
-                Log.d("HYTERA_SEARCH", "Tombol search diklik, membuka SearchView");
-                if (getSupportActionBar() != null) {
-                    getSupportActionBar().setTitle("");
-                }
-
-                if (btnToolbarBack != null) {
-                    btnToolbarBack.setVisibility(View.VISIBLE); // Tombol back muncul normal
-                }
-
-                searchViewToolbar.setVisibility(View.VISIBLE);
-                searchViewToolbar.setIconified(false);
-
-                View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
-                if (searchEditText instanceof android.widget.EditText) {
-                    android.widget.EditText editText = (android.widget.EditText) searchEditText;
-
-                    editText.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-                    editText.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT);
-                    editText.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
-
-                    editText.requestFocus();
-                }
+        if (btnSettings != null) {
+            View.OnClickListener settingsListener = v -> {
+                Intent intent = new Intent(MumlaActivity.this, SettingsActivity.class);
+                startActivity(intent);
             };
-
-            btnSearch.setOnClickListener(searchClickListener);
-
-            // Sembunyikan ikon kaca pembesar bawaan SearchView
-            ImageView searchIcon = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_mag_icon);
-            if (searchIcon != null) {
-                searchIcon.setImageResource(android.R.color.transparent);
-                searchIcon.setMinimumWidth(0);
-                searchIcon.setMinimumHeight(0);
-                searchIcon.getLayoutParams().width = 0;
-                searchIcon.getLayoutParams().height = 0;
-                searchIcon.setVisibility(View.GONE);
-            }
-
-            // Tombol Back Kustom di Toolbar
-            if (btnToolbarBack != null) {
-                btnToolbarBack.setOnClickListener(v -> closeSearchView());
-            }
-
-            // Tangani TextWatcher untuk filtering
-            View searchEditText = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_src_text);
-            if (searchEditText instanceof android.widget.EditText) {
-                android.widget.EditText editText = (android.widget.EditText) searchEditText;
-
-                editText.addTextChangedListener(new android.text.TextWatcher() {
-                    @Override
-                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-                    @Override
-                    public void onTextChanged(CharSequence s, int start, int before, int count) {
-                        Log.d("HYTERA_SEARCH", "Teks berubah: " + s.toString());
-
-                        // Reset status back jika pengguna mengetik huruf baru
-                        if (s.length() > 0) {
-                            isBackAlreadyPressedWhenEmpty[0] = false;
-                        }
-
-                        filterChannels(s.toString());
-                    }
-                    @Override
-                    public void afterTextChanged(android.text.Editable s) {}
-                });
-            }
-
-            // Tombol Close (ikon X) di Kanan
-            View closeButton = searchViewToolbar.findViewById(androidx.appcompat.R.id.search_close_btn);
-            if (closeButton != null) {
-                closeButton.setClickable(true);
-                closeButton.setEnabled(true);
-                closeButton.setFocusable(true);
-                closeButton.setFocusableInTouchMode(true);
-
-                Runnable clearSearchAction = () -> {
-                    searchViewToolbar.setQuery("", false);
-                    if (searchEditText instanceof android.widget.EditText) {
-                        ((android.widget.EditText) searchEditText).requestFocus();
-                        ((android.widget.EditText) searchEditText).setSelection(0);
-                    }
-                };
-
-                closeButton.setOnClickListener(v -> clearSearchAction.run());
-            }
+            btnSettings.setOnClickListener(settingsListener);
+            btnSettings.setOnKeyListener((v, keyCode, event) -> {
+                if (event.getAction() == KeyEvent.ACTION_DOWN &&
+                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    settingsListener.onClick(v);
+                    return true;
+                }
+                return false;
+            });
         }
 
         if (btnOverflow != null) {
@@ -1489,7 +1420,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e("MUMBLE_LOGIN", "Koneksi ke server gagal: " + e.getMessage());
-                runOnUiThread(() -> Toast.makeText(getApplicationContext(), "Gagal terhubung ke server backend!", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> {
+                    new MaterialAlertDialogBuilder(MumlaActivity.this)
+                            .setTitle("Gagal Terhubung")
+                            .setMessage("Gagal terhubung ke server backend, periksa koneksi perangkat Anda!")
+                            .setPositiveButton("Tutup", (dialog, which) -> {
+                                dialog.dismiss();
+                                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                            })
+                            .setCancelable(false)
+                            .show();
+                });
             }
 
             @Override
@@ -2244,7 +2185,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             @Override
             public void onFailure(Call call, IOException e) {
                 Log.e("MUMBLE_LOGIN", "Koneksi ke server gagal: " + e.getMessage());
-                runOnUiThread(() -> Toast.makeText(getApplicationContext(), "Gagal terhubung ke server backend!", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> {
+                    new MaterialAlertDialogBuilder(MumlaActivity.this)
+                            .setTitle("Gagal Terhubung")
+                            .setMessage("Gagal terhubung ke server backend, periksa koneksi perangkat Anda!")
+                            .setPositiveButton("Tutup", (dialog, which) -> {
+                                dialog.dismiss();
+                                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                            })
+                            .setCancelable(false)
+                            .show();
+                });
             }
 
             @Override
