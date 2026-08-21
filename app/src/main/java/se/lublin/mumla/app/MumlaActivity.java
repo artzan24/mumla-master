@@ -227,8 +227,9 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
     private final HumlaObserver mObserver = new HumlaObserver() {
         @Override
         public void onConnected() {
-
+            // Langsung arahkan ke tampilan list channel utama setelah koneksi berhasil
             loadDrawerFragment(DrawerAdapter.ITEM_SERVER);
+
             // Paksa mode input audio langsung jadi PTT saat terkoneksi
             Settings settings = Settings.getInstance(MumlaActivity.this);
             settings.setInputMethod(Settings.ARRAY_INPUT_METHOD_PTT);
@@ -323,8 +324,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         // Jika dipanggil dari logout paksa, langsung muat FavouriteServerListFragment
         if (isFromLogout) {
             getIntent().removeExtra("EXTRA_SHOW_SERVER_LIST");
-            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
-        } else if (getSupportFragmentManager().findFragmentById(R.id.content_frame) == null) {
             loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
         }
 
@@ -659,33 +658,70 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
         mDrawerLayout.setDrawerLockMode(androidx.drawerlayout.widget.DrawerLayout.LOCK_MODE_LOCKED_CLOSED);
 
         if (savedInstanceState == null) {
-            if (getIntent() != null && getIntent().hasExtra(EXTRA_DRAWER_FRAGMENT)) {
-                loadDrawerFragment(getIntent().getIntExtra(EXTRA_DRAWER_FRAGMENT,
-                        DrawerAdapter.ITEM_FAVOURITES));
+            // 1. Cek apakah ada intent action view (URL mumble://)
+            if (Intent.ACTION_VIEW.equals(getIntent().getAction())) {
+                String url = getIntent().getDataString();
+                try {
+                    Server server = MumbleURLParser.parseURL(url);
+                    DialogFragment fragment = ServerEditFragment.createServerEditDialog(
+                            MumlaActivity.this, server, ServerEditFragment.Action.CONNECT_ACTION, true);
+                    fragment.show(getSupportFragmentManager(), "url_edit");
+                } catch (MalformedURLException e) {
+                    Toast.makeText(this, getString(R.string.mumble_url_parse_failed), Toast.LENGTH_LONG).show();
+                    e.printStackTrace();
+                }
             } else {
-                loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
-            }
-        }
+                // 2. Cek Auto-Login
+                boolean isAutoLogin = getIntent() != null && getIntent().getBooleanExtra("is_auto_login", false);
 
-        if (getIntent() != null &&
-                Intent.ACTION_VIEW.equals(getIntent().getAction())) {
-            String url = getIntent().getDataString();
-            try {
-                Server server = MumbleURLParser.parseURL(url);
-                DialogFragment fragment = ServerEditFragment.createServerEditDialog(
-                        MumlaActivity.this, server, ServerEditFragment.Action.CONNECT_ACTION, true);
-                fragment.show(getSupportFragmentManager(), "url_edit");
-            } catch (MalformedURLException e) {
-                Toast.makeText(this, getString(R.string.mumble_url_parse_failed), Toast.LENGTH_LONG).show();
-                e.printStackTrace();
-            }
-        }
+                String savedNrp = null;
+                String savedPassword = null;
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        String masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(
+                                androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
+                        );
+                        android.content.SharedPreferences encryptedPrefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                                "MumbleUserSessionEncrypted",
+                                masterKeyAlias,
+                                this,
+                                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                        );
+                        savedNrp = encryptedPrefs.getString("KEY_NRP", null);
+                        savedPassword = encryptedPrefs.getString("KEY_PASSWORD", null);
+                    } else {
+                        android.content.SharedPreferences fallbackPrefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                        savedNrp = fallbackPrefs.getString("KEY_NRP", null);
+                        savedPassword = fallbackPrefs.getString("KEY_PASSWORD", null);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
 
-        if (savedInstanceState == null) {
-            if (mSettings.isFirstRun()) {
-                showFirstRunGuide();
-            } else {
-                new StartupAction().execute(this);
+                java.util.List<Server> serverList = mDatabase.getServers();
+
+                if ((isAutoLogin || (savedNrp != null && !savedNrp.trim().isEmpty())) && serverList != null && !serverList.isEmpty()) {
+                    // MUAT dulu fragment favorit agar FrameLayout tidak kosong melompong (bisa dibungkus loading/transparan)
+                    loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+
+                    Server autoServer = serverList.get(0);
+                    if (savedNrp != null && !savedNrp.trim().isEmpty()) {
+                        autoServer.setUsername(savedNrp);
+                    }
+                    if (savedPassword != null) {
+                        autoServer.setPassword(savedPassword);
+                    }
+
+                    // Jalankan koneksi
+                    connectToServer(autoServer);
+                } else {
+                    if (mSettings.isFirstRun()) {
+                        showFirstRunGuide();
+                    } else {
+                        loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
+                    }
+                }
             }
         }
     }
@@ -1384,26 +1420,30 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
         if (inputNrp == null || inputNrp.trim().isEmpty()) {
             Toast.makeText(this, "Silakan masukkan NRP pada kolom Username!", Toast.LENGTH_LONG).show();
+            // PERBAIKAN: Jika NRP kosong, arahkan kembali ke halaman favorit agar tidak stuck
+            loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
             return;
         }
 
-        //Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT).show();
         loadingToast = Toast.makeText(this, "Cek Username atau NRP ke server", Toast.LENGTH_SHORT);
         loadingToast.show();
 
         String url = "https://mumble.tekkombali.com/api/login";
-        String apiKey = "RAHASIA_RADIO_24101981"; // Ganti dengan X-API-KEY yang valid di CI4 Anda
+        String apiKey = "RAHASIA_RADIO_24101981";
 
         OkHttpClient client = new OkHttpClient();
-        // AMBIL PASSWORD LANGSUNG DARI SERVER OBJECT ATAU CEK JIKA KOSONG
-        String passwordCi4 = server.getPassword();
 
-        // (Opsional Cadangan): Jika server.getPassword() isinya password mumble "PoldaBali241081",
-        // maka kita ambil dari SharedPreferences dengan fallback teks kosong
-        if (passwordCi4 == null || passwordCi4.equals("PoldaBali241081")) {
-            SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+        // 1. PERBAIKAN: Ambil password dengan pengecekan key SharedPreferences yang konsisten
+        String passwordCi4 = server.getPassword();
+        SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+
+        if (passwordCi4 == null || passwordCi4.equals("PoldaBali241081") || passwordCi4.isEmpty()) {
+            // Sesuaikan "saved_ci4_password" dengan key yang benar-benar Anda pakai saat menyimpan password
             passwordCi4 = prefs.getString("saved_ci4_password", "");
         }
+
+        // DEBUG: Cek melalui Logcat apakah data yang dikirim valid
+        Log.d("MUMBLE_LOGIN_DEBUG", "Mengirim NRP: " + inputNrp.trim() + " | Password length: " + passwordCi4.length());
 
         RequestBody formBody = new FormBody.Builder()
                 .add("nrp", inputNrp.trim())
@@ -1412,7 +1452,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-API-KEY", apiKey) // Menambahkan Header X-API-KEY
+                .addHeader("X-API-KEY", apiKey)
                 .post(formBody)
                 .build();
 
@@ -1421,10 +1461,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             public void onFailure(Call call, IOException e) {
                 Log.e("MUMBLE_LOGIN", "Koneksi ke server gagal: " + e.getMessage());
                 runOnUiThread(() -> {
+                    if (loadingToast != null) loadingToast.cancel();
+
+                    // PERBAIKAN: Berikan opsi "Coba Lagi" atau kembali dengan aman
                     new MaterialAlertDialogBuilder(MumlaActivity.this)
                             .setTitle("Gagal Terhubung")
-                            .setMessage("Gagal terhubung ke server backend, periksa koneksi perangkat Anda!")
-                            .setPositiveButton("Tutup", (dialog, which) -> {
+                            .setMessage("Gagal terhubung ke server backend: " + e.getMessage())
+                            .setPositiveButton("Coba Lagi", (dialog, which) -> {
+                                dialog.dismiss();
+                                connectToServer(server); // Tombol untuk mencoba ulang koneksi
+                            })
+                            .setNegativeButton("Kembali", (dialog, which) -> {
                                 dialog.dismiss();
                                 loadDrawerFragment(DrawerAdapter.ITEM_FAVOURITES);
                             })
@@ -1437,15 +1484,17 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
             public void onResponse(Call call, Response response) throws IOException {
                 String responseBodyString = response.body() != null ? response.body().string() : "";
 
+                runOnUiThread(() -> {
+                    if (loadingToast != null) {
+                        loadingToast.cancel();
+                    }
+                });
+
                 if (response.isSuccessful()) {
-                    // Jika sukses (200 OK) dari API Login
                     Gson gson = new Gson();
                     LoginResponse loginData = gson.fromJson(responseBodyString, LoginResponse.class);
 
                     runOnUiThread(() -> {
-                        if (loadingToast != null) {
-                            loadingToast.cancel();
-                        }
                         if (loginData != null && loginData.isStatus()) {
                             String realname = loginData.getProfile().getRealname();
                             String nrpAsli = inputNrp.trim();
@@ -1466,7 +1515,6 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                                     }
                                 }
 
-                                android.content.SharedPreferences prefs = getApplicationContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
                                 prefs.edit().putString("allowed_channels", channelIdsBuilder.toString()).apply();
                             } catch (Exception e) {
                                 e.printStackTrace();
@@ -1477,20 +1525,8 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                                 mDatabase.updateServer(server);
                             }
 
-                            // Tampilkan pesan selamat datang
-                            /*String fullText = "Selamat datang,\n" + realname;
-                            //android.text.SpannableString spannable = new android.text.SpannableString(fullText);
-                            //spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                                    15, fullText.length(), 0);*/
-
-                            android.content.SharedPreferences prefs = getApplicationContext().getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
                             prefs.edit().putString("realname", realname).apply();
 
-                            //Toast toast = Toast.makeText(getApplicationContext(), spannable, Toast.LENGTH_LONG);
-                            //toast.show();
-
-                            // --- TAMBAHKAN PENGECEKAN KONEKSI SEBELUM LANJUT ---
-                            // Pastikan server tujuan tidak kosong sebelum memicu koneksi socket Mumble
                             if (server != null) {
                                 mServerPendingPerm = server;
                                 connectToServerWithPerm();
@@ -1499,15 +1535,13 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             }
 
                         } else {
-                            String pesanError = loginData != null ? loginData.getMessage() : "NRP tidak terdaftar!";
-                            showAccessDeniedDialog(pesanError);
+                            // Jika status dari API false (misal password salah/tidak sesuai local storage)
+                            String pesanError = loginData != null ? loginData.getMessage() : "Nrp atau Password tidak valid!";
+                            runOnUiThread(() -> showAccessDeniedDialog(pesanError));
                         }
                     });
                 } else {
-                    // Jika error dari server (Misal 401 Unauthorized, 404, dll)
-                    if (loadingToast != null) {
-                        loadingToast.cancel();
-                    }
+                    // Jika error HTTP (401, 404, 500, dll)
                     String errorMessage = "Terjadi kesalahan pada server (" + response.code() + ")";
                     try {
                         org.json.JSONObject jsonObject = new org.json.JSONObject(responseBodyString);
@@ -1526,9 +1560,7 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                     }
 
                     final String finalErrorMessage = errorMessage;
-                    runOnUiThread(() -> {
-                        showAccessDeniedDialog(finalErrorMessage);
-                    });
+                    runOnUiThread(() -> showAccessDeniedDialog(finalErrorMessage));
                 }
             }
         });
@@ -1704,6 +1736,44 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
 
             case CONNECTED:
                 try {
+                    try {
+                        Server connectedServer = mService != null ? mService.getTargetServer() : null;
+                        if (connectedServer != null) {
+                            String currentUsername = connectedServer.getUsername();
+                            String currentPassword = connectedServer.getPassword();
+
+                            if (currentUsername != null && !currentUsername.trim().isEmpty()) {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    String masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(
+                                            androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
+                                    );
+
+                                    android.content.SharedPreferences encryptedPrefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                                            "MumbleUserSessionEncrypted",
+                                            masterKeyAlias,
+                                            MumlaActivity.this,
+                                            androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                                            androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                                    );
+
+                                    encryptedPrefs.edit()
+                                            .putString("KEY_NRP", currentUsername)
+                                            .putString("KEY_PASSWORD", currentPassword != null ? currentPassword : "")
+                                            .apply();
+                                } else {
+                                    // Fallback untuk Android di bawah API 23
+                                    android.content.SharedPreferences fallbackPrefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                                    fallbackPrefs.edit()
+                                            .putString("KEY_NRP", currentUsername)
+                                            .putString("KEY_PASSWORD", currentPassword != null ? currentPassword : "")
+                                            .apply();
+                                }
+                            }
+                        }
+                    } catch (Exception encryptionError) {
+                        encryptionError.printStackTrace();
+                    }
+
                     if (!mHasShownWelcomeToast) {
                         android.content.SharedPreferences prefs = getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
                         String realname = prefs.getString("realname", "");
@@ -1714,14 +1784,12 @@ public class MumlaActivity extends AppCompatActivity implements ListView.OnItemC
                             spannable.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
                                     15, fullText.length(), 0);
 
-                            // MEMBUAT CUSTOM LAYOUT POLOS (DIJAMIN TANPA IKON APLIKASI)
                             android.widget.LinearLayout container = new android.widget.LinearLayout(MumlaActivity.this);
                             container.setOrientation(android.widget.LinearLayout.HORIZONTAL);
                             container.setPadding(35, 25, 35, 25);
 
-                            // Background semi-transparan ala Toast standar
                             android.graphics.drawable.GradientDrawable backgroundDrawable = new android.graphics.drawable.GradientDrawable();
-                            backgroundDrawable.setColor(android.graphics.Color.parseColor("#CC323232")); // Hitam transparan
+                            backgroundDrawable.setColor(android.graphics.Color.parseColor("#CC323232"));
                             backgroundDrawable.setCornerRadius(20);
                             container.setBackground(backgroundDrawable);
 

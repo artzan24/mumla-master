@@ -96,18 +96,15 @@ public class FavouriteServerListFragment extends Fragment implements OnItemClick
         super.onResume();
         List<Server> currentServers = getServers();
         if (currentServers == null || currentServers.isEmpty()) {
-            // Buat server default secara otomatis agar form login langsung ter-render
             try {
                 Server defaultServer = new Server(
-                        -1,                         // ID
-                        "Polda Bali",       // Nama Server
-                        "roip.tekkombali.my.id",    // Host/IP
-                        50000,                      // Port Mumble Default
-                        "",                         // Username default kosong
-                        ""                          // Password kosong
+                        -1,
+                        "Polda Bali",
+                        "roip.tekkombali.my.id",
+                        50000,
+                        "",
+                        ""
                 );
-
-                // Masukkan ke database aplikasi
                 mDatabaseProvider.getDatabase().addServer(defaultServer);
             } catch (Exception e) {
                 Log.d("FavouriteServerList", "Gagal auto-add server: " + e.getMessage());

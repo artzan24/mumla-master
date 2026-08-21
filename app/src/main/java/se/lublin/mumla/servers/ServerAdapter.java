@@ -179,6 +179,7 @@ public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
                 public void onClick(View v) {
                     String usernameStr = usernameField != null ? usernameField.getText().toString().trim() : "";
                     String passwordStr = passwordField != null ? passwordField.getText().toString().trim() : "";
+                    android.util.Log.d("DEBUG_INPUT", "Username input: " + usernameStr + " | Password input length: " + passwordStr.length());
 
                     if (usernameStr.isEmpty()) {
                         if (usernameField != null) {
@@ -188,9 +189,40 @@ public abstract class ServerAdapter<E extends Server> extends ArrayAdapter<E> {
                         return;
                     }
 
-                    // Simpan data otomatis ke SharedPreferences agar sinkron dengan MumlaActivity dan sesi login berikutnya
                     Context appCtx = getContext().getApplicationContext();
 
+                    // 1. SIMPAN DENGAN ENKRIPSI (Mendukung API 21 ke atas dengan Fallback aman)
+                    try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                            String masterKeyAlias = androidx.security.crypto.MasterKeys.getOrCreate(
+                                    androidx.security.crypto.MasterKeys.AES256_GCM_SPEC
+                            );
+
+                            android.content.SharedPreferences encryptedPrefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                                    "MumbleUserSessionEncrypted",
+                                    masterKeyAlias,
+                                    appCtx,
+                                    androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                            );
+
+                            encryptedPrefs.edit()
+                                    .putString("KEY_NRP", usernameStr)
+                                    .putString("KEY_PASSWORD", passwordStr)
+                                    .apply();
+                        } else {
+                            // Fallback untuk Android di bawah API 23 (Lollipop)
+                            android.content.SharedPreferences fallbackPrefs = appCtx.getSharedPreferences("MumbleUserSession", Context.MODE_PRIVATE);
+                            fallbackPrefs.edit()
+                                    .putString("KEY_NRP", usernameStr)
+                                    .putString("KEY_PASSWORD", passwordStr)
+                                    .apply();
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    // 2. Simpan juga ke SharedPreferences standar yang sudah ada sebelumnya (jika masih diperlukan aplikasi)
                     appCtx.getSharedPreferences("RoipLoginPrefs", Context.MODE_PRIVATE).edit()
                             .putString("saved_username", usernameStr)
                             .putString("saved_password", passwordStr)
